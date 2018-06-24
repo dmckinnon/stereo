@@ -14,11 +14,12 @@ int main(int argc, char** argv)
 {
     /*
       So what I'm going to do is:
-        - bring in both the images
-        - import the intrinsic camera settings // lol trouble with this
+        (DONE)- bring in both the images
+        (DONE)- import the intrinsic camera settings // lol trouble with this
 
-        - Use SIFT to compute feature descriptors
-        - Use FLANN (?) to match the descriptors (or write own algo) between the images
+        (DONE)- Use ORB to compute feature descriptors
+        (DONE)- Use Brute force (?) to match the descriptors (or write own algo) between the images
+
         - Use the 8 point algorithm to find the essential matrix
         - Use an epipolar search and maybe some triangulation or P3P to find the depth of some points
         - Rectify? To get a disparity map? To optimise the epipolar search?
@@ -73,21 +74,28 @@ int main(int argc, char** argv)
     vector<DMatch> matches;
     matcher.match(descLeft, descRight, matches);
 
+	// Ok, all that works. Now we pick some matching points that are sufficiently
+	// far away from each other, and strong enough
+	// Get 8 points
+	// Do 8 point algorithm
+
+
+
     // debug - draw matches
 	Mat output;
 	drawMatches(leftImage, keypointsLeft, rightImage, keypointsRight, matches, output);
 
+	// resize the output
+	resize(output, output, Size(640, 480), 0, 0, CV_INTER_LINEAR);
 
     std::string leftWindowName = "Left image";
     std::string rightWindowName = "Right image";
 	std::string debugWindowName = "debug image";
 
     namedWindow(debugWindowName); // Create a window
-
     imshow(debugWindowName, output); // Show our image inside the created window.
 
     waitKey(0); // Wait for any keystroke in the window
-
     destroyWindow(debugWindowName); //destroy the created window
 
     return 0;
