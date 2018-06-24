@@ -1,6 +1,8 @@
 #include <opencv2/opencv.hpp>
+#include <opencv2/calib3d.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/features2d.hpp>
+#include <opencv2/features2d/features2d.hpp>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -9,6 +11,8 @@
 
 using namespace cv;
 using namespace std;
+
+#define NUM_POINTS_FOR_F 8
 
 int main(int argc, char** argv)
 {
@@ -20,7 +24,7 @@ int main(int argc, char** argv)
         (DONE)- Use ORB to compute feature descriptors
         (DONE)- Use Brute force (?) to match the descriptors (or write own algo) between the images
 
-        - Use the 8 point algorithm to find the essential matrix
+        (IN PROGRESS) - Use the 8 point algorithm to find the essential matrix
         - Use an epipolar search and maybe some triangulation or P3P to find the depth of some points
         - Rectify? To get a disparity map? To optimise the epipolar search?
     */
@@ -70,7 +74,8 @@ int main(int argc, char** argv)
 	detector->detectAndCompute(rightImage, noArray(), keypointsRight, descRight);
 
     // Brute force matcher, cos screw compute time, we'll figure this out later
-    BFMatcher matcher;
+    //BFMatcher matcher;
+	FlannBasedMatcher matcher;
     vector<DMatch> matches;
     matcher.match(descLeft, descRight, matches);
 
@@ -79,6 +84,40 @@ int main(int argc, char** argv)
 	// Get 8 points
 	// Do 8 point algorithm
 
+	// Get minimum distance over all matches for use later
+	double minDist = 100;
+	for (unsigned int i = 0; i < matches.size(); ++i)
+	{
+		double dist = matches[i].distance;
+		if (dist < minDist) minDist = dist;
+	}
+
+	// Get the best 8 points
+	vector<DMatch> bestMatches;
+	for (unsigned int i = 0; i < matches.size(); ++i)
+	{
+		if (matches[i].distance <= max(2*minDist, 0.02))
+		{
+			bestMatches.push_back(matches[i]);
+		}
+		if (bestMatches.size() >= NUM_POINTS_FOR_F) break;
+	}
+
+	// Now that we have 8 points, use these in the 8 point algorithm to
+	// find the fundamental matrix
+	// What might actually be better here is to do the five-point algorithm to get 
+	// the essential matrix E. This should work since we have the camera matrix
+	// TODO: implement 8 point algo
+	vector<int> pointIndicesLeft, pointIndicesRight;
+	for (unsigned int i = 0; i < bestMatches.size(); ++i)
+	{
+		pointIndicesLeft.push_back(bestMatches[i].queryIdx);
+		pointIndicesRight.push_back(bestMatches[i].trainIdx);
+	}
+	vector<Point2f> selPointsLeft, selPointsRight;
+	KeyPoint::convert(keypointsLeft, selPointsLeft, pointIndicesLeft);
+	KeyPoint::convert(keypointsRight, selPointsRight, pointIndicesRight);
+	Mat F = findFundamentalMat(Mat(selPointsLeft), Mat(selPointsRight), CV_FM_8POINT, 3, 0.99, noArray());
 
 
     // debug - draw matches
