@@ -26,6 +26,9 @@ int main(int argc, char** argv)
         (DONE)- Use Brute force (?) to match the descriptors (or write own algo) between the images
 
         (IN PROGRESS) - Use the 8 point algorithm to find the essential matrix
+
+		- To verify fundamental matrix, check epipolar lines
+
         - Use an epipolar search and maybe some triangulation or P3P to find the depth of some points
         - Rectify? To get a disparity map? To optimise the epipolar search?
     */
@@ -40,11 +43,14 @@ int main(int argc, char** argv)
     Mat rightIntrinsics = Mat::zeros(3, 3, CV_32F);
     float dOffset = 0.f;
     float baseline = 0.f;
+	float imageWidth, imageHeight;
 
     // Hardcoded from file cos file reading is hard????
     // TODO: fix
     dOffset = 107.911;
     baseline = 237.604;
+	imageWidth = 3000;
+	imageHeight = 1920;
     leftIntrinsics.at<float>(0,0) = 3962.004f;
     leftIntrinsics.at<float>(0,1) = 0.f;
     leftIntrinsics.at<float>(0, 2) = 1146.717f;
@@ -114,11 +120,54 @@ int main(int argc, char** argv)
 		pointIndicesLeft.push_back(bestMatches[i].queryIdx);
 		pointIndicesRight.push_back(bestMatches[i].trainIdx);
 	}
-	vector<Point2f> selPointsLeft, selPointsRight;
-	KeyPoint::convert(keypointsLeft, selPointsLeft, pointIndicesLeft);
-	KeyPoint::convert(keypointsRight, selPointsRight, pointIndicesRight);
-	Mat F = findFundamentalMat(Mat(selPointsLeft), Mat(selPointsRight), CV_FM_8POINT, 3, 0.99, noArray());
+	vector<Point2f> imagePointsLeft, imagePointsRight;
+	KeyPoint::convert(keypointsLeft, imagePointsLeft, pointIndicesLeft);
+	KeyPoint::convert(keypointsRight, imagePointsRight, pointIndicesRight);
+	Mat F = findFundamentalMat(Mat(imagePointsLeft), Mat(imagePointsRight), CV_FM_8POINT, 3, 0.99, noArray());
 
+	// test fundamental matrix
+	// We can check how well the matching and 8-point worked by
+	// the epipolar geometry constraint that m_2T * F * m_1 = 0
+	// for points m_1 and m_2 
+	// TODO: go over the theory
+
+	// can I just do this in image coordinates or need it be in z=1 coords? 
+	// I think it has to be in z=1
+	// Yes
+
+	// For each image,
+	// for each image point, 
+	// compute the epiline
+	// and then we'll draw them
+	
+	// Epiline for points in left image to lines in right image
+	int numPoints = imagePointsLeft.size();
+	for (int i = 0; i < numPoints; ++i)
+	{
+		vector<Vec3f> epiline;
+		Mat normPoint = Mat(imagePointsLeft[i]);
+		
+		// normalise the point
+		normPoint.at<int>(0) /= imageWidth;
+		normPoint.at<int>(1) /= imageHeight;
+
+		// Make a 3-vector
+		Mat norm3 = Mat::zeros(3, 1, CV_32F);
+		norm3.at<float>(0) = normPoint.at<int>(0);
+		norm3.at<float>(1) = normPoint.at<int>(1);
+		norm3.at<float>(0) = 1.f;
+
+		// multiply by K inverse to get a projective point p
+		Mat Kinv = Mat::zeros(3, 3, CV_32F);
+		invert(leftIntrinsics, Kinv);
+		Mat projPoint = Kinv * norm3;
+
+		// unproject each image point
+		computeCorrespondEpilines(projPoint, 1, F, epiline);
+		
+		// Now display the line
+	}
+	
 
     // debug - draw matches
 	Mat output;
