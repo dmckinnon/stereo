@@ -74,9 +74,8 @@ int main(int argc, char** argv)
 	detector->detectAndCompute(leftImage, noArray(), keypointsLeft, descLeft);
 	detector->detectAndCompute(rightImage, noArray(), keypointsRight, descRight);
 
-    // Brute force matcher, cos screw compute time, we'll figure this out later
-    //BFMatcher matcher;
-	FlannBasedMatcher matcher;
+    // Flann matcher
+	BFMatcher matcher(NORM_HAMMING);
     vector<DMatch> matches;
     matcher.match(descLeft, descRight, matches);
 
