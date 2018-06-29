@@ -13,7 +13,7 @@
 using namespace cv;
 using namespace std;
 
-#define NUM_POINTS_FOR_F 8
+#define NUM_POINTS_FOR_F 20
 
 int main(int argc, char** argv)
 {
@@ -102,7 +102,7 @@ int main(int argc, char** argv)
 	vector<DMatch> bestMatches;
 	for (unsigned int i = 0; i < matches.size(); ++i)
 	{
-		if (matches[i].distance <= max(2*minDist, 0.02))
+		if (matches[i].distance <= max(10*minDist, 0.05))
 		{
 			bestMatches.push_back(matches[i]);
 		}
@@ -141,49 +141,59 @@ int main(int argc, char** argv)
 	// and then we'll draw them
 	
 	// Epiline for points in left image to lines in right image
+	// Should transform all the points and then compute epipolar lines
+	vector<Vec3f> epilines;
+ 	computeCorrespondEpilines(imagePointsLeft, 1, F, epilines);
+
+	std::string debugWindowName = "debug image";
+
+	namedWindow(debugWindowName); // Create a window
+
 	int numPoints = imagePointsLeft.size();
 	for (int i = 0; i < numPoints; ++i)
 	{
-		vector<Vec3f> epiline;
-		Mat normPoint = Mat(imagePointsLeft[i]);
-		
-		// normalise the point
-		normPoint.at<int>(0) /= imageWidth;
-		normPoint.at<int>(1) /= imageHeight;
+		line(rightImage, Point(0, -epilines[i][2]/epilines[i][1]), 
+			Point(rightImage.cols, -(epilines[i][2]+epilines[i][0]*rightImage.cols)/epilines[i][1]),
+			(255, 0, 0), 3);
 
-		// Make a 3-vector
-		Mat norm3 = Mat::zeros(3, 1, CV_32F);
-		norm3.at<float>(0) = normPoint.at<int>(0);
-		norm3.at<float>(1) = normPoint.at<int>(1);
-		norm3.at<float>(0) = 1.f;
+		resize(rightImage, rightImage, Size(640, 480), 0, 0, CV_INTER_LINEAR);
+		imshow(debugWindowName, rightImage);
+		waitKey(0);
 
-		// multiply by K inverse to get a projective point p
-		Mat Kinv = Mat::zeros(3, 3, CV_32F);
-		invert(leftIntrinsics, Kinv);
-		Mat projPoint = Kinv * norm3;
+		// compute error in the line
+	}
 
-		// unproject each image point
-		computeCorrespondEpilines(projPoint, 1, F, epiline);
-		
-		// Now display the line
+	// Now the other way
+	epilines.clear();
+	computeCorrespondEpilines(imagePointsRight, 1, F, epilines);
+
+	for (int i = 0; i < numPoints; ++i)
+	{
+		line(leftImage, Point(0, -epilines[i][2] / epilines[i][1]),
+			Point(rightImage.cols, -(epilines[i][2] + epilines[i][0] * rightImage.cols) / epilines[i][1]),
+			(255, 0, 0), 3);
+
+		resize(leftImage, leftImage, Size(640, 480), 0, 0, CV_INTER_LINEAR);
+		imshow(debugWindowName, leftImage);
+		waitKey(0);
+
+		// compute error in the line
 	}
 	
 
     // debug - draw matches
-	Mat output;
-	drawMatches(leftImage, keypointsLeft, rightImage, keypointsRight, matches, output);
+	//Mat output;
+	//drawMatches(leftImage, keypointsLeft, rightImage, keypointsRight, matches, output);
 
 	// resize the output
-	resize(output, output, Size(640, 480), 0, 0, CV_INTER_LINEAR);
+	
 
     std::string leftWindowName = "Left image";
     std::string rightWindowName = "Right image";
-	std::string debugWindowName = "debug image";
+	
+    //imshow(debugWindowName, output); // Show our image inside the created window.
 
-    namedWindow(debugWindowName); // Create a window
-    imshow(debugWindowName, output); // Show our image inside the created window.
-
-    waitKey(0); // Wait for any keystroke in the window
+    //waitKey(0); // Wait for any keystroke in the window
     destroyWindow(debugWindowName); //destroy the created window
 
     return 0;
