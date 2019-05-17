@@ -7,8 +7,7 @@ information, you can determine the depth (to within some error bound) of any poi
  rigid-body transformation from one camera to the other).
  
 I won't be following any specific paper; rather, just bringing in the theory here and there where necessary. I'll try to explain as best
-I can, but better than to read my explanations is to read the theory behind it. The dataset I'm working from is [here](https://vision.in.tum.de/data/datasets/3dreconstruction)
- - it's superb, it has a lot of high quality images of objects, and complete calibration data for each view. 
+I can, but better than to read my explanations is to read the theory behind it. The dataset I'm working from is [here](https://vision.in.tum.de/data/datasets/3dreconstruction) - it's superb, it has a lot of high quality images of objects, and complete calibration data for each view. 
 
 # Contents:
 to add
