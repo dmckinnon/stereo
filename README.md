@@ -37,7 +37,6 @@ Since we have a calibration, we're technically finding the Essential matrix. The
 We compute this with an algorithm called the 8-Point Algorithm, designed by Hartley (link). 
 
 # Triangulation
-epipolar numpty bumpty
 So triangulation is basically the idea of we have several known points *P_i*, and an unknown point *X*, and we know where *X* is relative to each *P_i*, so we use that to figure out our best approximation for *X*. I have a couple of ideas for this algorithm, and I'm going to try those before reading the literature, to see if I can figure it out. 
 
 #### First idea:
@@ -56,8 +55,16 @@ Trouble is, this is very computationally expensive, and unnecessary. There is a 
 Going back to the first idea, we have those two rays. What we can do is take the difference of those two rays ... and minimise it! Surely the point where the rays are closest is the best depth for *X*. So, get the equation for their difference, put this in terms of a vector of the depth parameters, and get the Jacobian. Equate to zero, solve, and bam we have our depth parameters. Use these. 
 Now this may still not be the best way, but it's a decent method I thought of. 
 
-Now let's see what the actual literature says. 
 
+#### Oops
+Turns out I'm rather wrong. The usual Euclidean geometric principles I'm relying on don't actually apply in Projective Geometry. (why?)
+Let's see what the actual literature says. 
+
+Firstly, there is [Hartley and Sturm's original 1997 paper on triangulation](https://users.cecs.anu.edu.au/~hartley/Papers/triangulation/triangulation.pdf), which details several methods and presents an optimal one. This is complicated to explain here, but the crux is that instead of adjusting depth for minimisation, they realised that there are a pair of true points that the feature points are approximating. Let's adjust the feature points such that we minimise the distance between the feature points and the theoretical true points. Their formulation for this problem results in a 6-degree polynomial, which must be solved to find the minimum. The advantage of their algorithm is that it is closed form and requires no iteration. 
+
+Then came [Kanatani's paper on triangulation](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.220.724&rep=rep1&type=pdf), which aimed to improve on Hartley and Sturm with an iterative algorithm. 
+
+Finally, [Peter Lindstrom improved on Kanatani's method](https://e-reports-ext.llnl.gov/pdf/384387.pdf) by designing a non-iterative quadratic solution that is faster than Hartley and Sturm, and more stable. 
 
 # Disparity map
 Once we've triangulated every matching pair of points, we can create a disparity map. BAsically an image where each pixel is the depth gotta add more here woo
