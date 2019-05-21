@@ -104,6 +104,13 @@ When we have found the closest and second closest right-image features for a par
 Since we have a calibration, we're technically finding the Essential matrix. These matrices are basically fancy names for "the 3D transform from one camera to another". If we have two cameras, *C_0* and *C_1*, situated at two points in space looking at the same thing, then there exists some rigid-body transform that takes coordinates in the frame of *C_0* and puts them into the frame of *C_1*. A rigid-body transform is basically a rotation and a translation - or a slide. You can imagine sitting two ye olde-timey cameras on a table, pointing at, say, a wall nearby. They might be at some angle to each other. Grab one, turn it a bit, then slide it, and bam, it's in exactly the same position as the other, facing the same way (assuming these are magical cameras that can move through each other). That's what this matrix does. The __Essential Matrix__ takes points projected from a calibrated camera to the projective plane for another calibrated camera (that is, you need the camera calibration matrix). The __Fundamental Matrix__ doesn't care about calibration, and takes points in the projective image plane for one camera to the projective image plane of the other camera. 
 
 We compute this with an algorithm called the 8-Point Algorithm, designed by Hartley (link). 
+https://en.wikipedia.org/wiki/Eight-point_algorithm
+
+https://en.wikipedia.org/wiki/Singular_value_decomposition
+
+https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf
+
+http://www.cs.cmu.edu/afs/andrew/scs/cs/15-463/f07/proj_final/www/amichals/fundamental.pdf
 
 # Triangulation
 So triangulation is basically the idea of we have several known points *P_i*, and an unknown point *X*, and we know where *X* is relative to each *P_i*, so we use that to figure out our best approximation for *X*. I have a couple of ideas for this algorithm, and I'm going to try those before reading the literature, to see if I can figure it out. 
