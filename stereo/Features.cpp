@@ -552,15 +552,6 @@ std::vector<Feature> ScoreAndClusterFeatures(Mat img, vector<Feature>& features)
 */
 // Support functions
 template <typename T>
-void NormaliseVector(std::vector<T>& v)
-{
-	float s = L2_norm(v);
-	for (unsigned int i = 0; i < v.size(); ++i)
-	{
-		v[i] /= s;
-	}
-}
-template <typename T>
 float L2_norm(vector<T> v)
 {
 	T norm = (T)0;
@@ -569,6 +560,15 @@ float L2_norm(vector<T> v)
 		norm += v[i] * v[i];
 	}
 	return sqrt(norm);
+}
+template <typename T>
+void NormaliseVector(std::vector<T>& v)
+{
+	float s = L2_norm(v);
+	for (unsigned int i = 0; i < v.size(); ++i)
+	{
+		v[i] /= s;
+	}
 }
 void ComputeFeatureOrientation(Feature& feature, Mat xgrad, Mat ygrad);
 // Actual function

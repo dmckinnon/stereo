@@ -76,9 +76,12 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>E:\d_mcc\Projects\Eigen;E:\d_mcc\Projects\Eigen\Eigen\src\Jacobi;E:\d_mcc\Projects\Eigen\Eigen\src\SVD;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\flann\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\calib3d\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\build\install\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\highgui\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\imgcodecs\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\core\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\features2d\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
+      <AdditionalLibraryDirectories>E:\d_mcc\Projects\OpenCV\opencv-3.4.1\build\lib\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_core341d.lib;opencv_flann341d.lib;opencv_calib3d341d.lib;opencv_features2d341d.lib;opencv_highgui341d.lib;opencv_imgproc341d.lib;opencv_imgcodecs341d.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -87,9 +90,12 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>E:\d_mcc\Projects\Eigen;E:\d_mcc\Projects\Eigen\Eigen\src\Jacobi;E:\d_mcc\Projects\Eigen\Eigen\src\SVD;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\flann\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\calib3d\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\build\install\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\highgui\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\imgcodecs\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\core\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\features2d\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
+      <AdditionalLibraryDirectories>E:\d_mcc\Projects\OpenCV\opencv-3.4.1\build\lib\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_core341d.lib;opencv_flann341d.lib;opencv_calib3d341d.lib;opencv_features2d341d.lib;opencv_highgui341d.lib;opencv_imgproc341d.lib;opencv_imgcodecs341d.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -123,7 +129,23 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Features.cpp" />
     <ClCompile Include="main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="opencv_core341d.dll">
+      <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</DeploymentContent>
+    </None>
+    <None Include="opencv_highgui341d.dll">
+      <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</DeploymentContent>
+    </None>
+    <None Include="opencv_imgcodecs341d.dll" />
+    <None Include="opencv_imgproc341d.dll" />
+    <None Include="opencv_photo341d.dll" />
+    <None Include="opencv_videoio341d.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Features.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -18,5 +18,21 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Features.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="opencv_core341d.dll" />
+    <None Include="opencv_highgui341d.dll" />
+    <None Include="opencv_imgcodecs341d.dll" />
+    <None Include="opencv_imgproc341d.dll" />
+    <None Include="opencv_photo341d.dll" />
+    <None Include="opencv_videoio341d.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Features.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

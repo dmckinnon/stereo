@@ -7,6 +7,7 @@
 #include <vector>
 #include <math.h>
 #include "Features.h"
+#include <Eigen/Dense>
 
 using namespace std;
 using namespace cv;
