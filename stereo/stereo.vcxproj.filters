@@ -21,6 +21,9 @@
     <ClCompile Include="Features.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Stereography.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="opencv_core341d.dll" />
@@ -32,6 +35,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Features.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Stereography.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

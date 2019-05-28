@@ -10,6 +10,7 @@
 #include <Eigen/Dense>
 #include <filesystem>
 #include <Windows.h>
+#include "Stereography.h"
 
 using namespace std;
 using namespace cv;
@@ -69,6 +70,7 @@ struct StereoPair
 	TODO:
 	- how to pull in images
 	- do we need camera matrices?
+	- TEST NORMALISATION
 
 */
 // Support function
@@ -179,8 +181,9 @@ int main(int argc, char** argv)
 			}
 
 			// Compute Fundamental matrix
+			// TODO: test
 			Matrix3f fundamentalMatrix;
-			if (!FindFundamentalMatrix(matches, F))
+			if (!FindFundamentalMatrix(matches, fundamentalMatrix))
 			{
 				continue;
 			}
@@ -188,6 +191,9 @@ int main(int argc, char** argv)
 			matrices[i][j].img1 = images[i];
 			matrices[i][j].img2 = images[j];
 			matrices[i][j].F = fundamentalMatrix;
+
+			// Now perform triangulation on each of those points to get the depth
+			// TODO: figure out structure here
 		}
 	}
 

@@ -92,10 +92,42 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	// Get the top 8? All of them? 
 	// Select some subset and form a system of linear equations based on the 
 	// epipolar constraint
+	// In theory, it shouldn't matter which 8 we pick
+	// also in theory, we have a strong matching set of points - why not use all?
+	// We should just use the first 8
+	MatrixXf Y;
+	Y.resize(8, 9);
+	// The matrix Y follows the constraint of y' E y = 0 where y' is from the second feature
+	// and y is from the first
+	for (int i = 0; i < 8;/*pairs.size()*/ ++i)
+	{
+		Point2f y = pairs[i].first.p;
+		Point2f yprime = pairs[i].second.p;
+		Y(i, 0) = yprime.x * y.x;
+		Y(i, 1) = yprime.x * y.y;
+		Y(i, 2) = yprime.x;
+		Y(i, 3) = yprime.y * y.x;
+		Y(i, 4) = yprime.y * y.y;
+		Y(i, 5) = yprime.y;
+		Y(i, 6) = y.x;
+		Y(i, 7) = y.y;
+		Y(i, 8) = 1;
+	}
 
 	// Solve with SVD
+	BDCSVD<MatrixXf> svd(Y, ComputeThinU | ComputeFullV);
+	if (!svd.computeV())
+		return false;
+	auto & f = svd.matrixV();
 
+	F << f(0, 8), f(1, 8), f(2, 8),
+		f(3, 8), f(4, 8), f(5, 8),
+		f(6, 8), f(7, 8), f(8, 8);
 
+	// Do I need to scale F by the 2,2 value?
+
+	// Transform the matrix back to the original coordinate system
+	F = normalise2.transpose() * F * normalise1;
 
 	return true;
 }
