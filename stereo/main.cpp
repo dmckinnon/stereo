@@ -146,6 +146,7 @@ int main(int argc, char** argv)
 			return 0;
 		}
 
+		cout << "Image descriptor created for image " << imageName << endl;
 		ImageDescriptor i;
 		i.filename = imageName;
 		i.features = goodFeatures;
@@ -173,10 +174,12 @@ int main(int argc, char** argv)
 	{
 		for (int j = i+1; j < images.size(); ++j)
 		{
+			cout << "Matching features for " << images[i].filename << " and " << images[j].filename << endl;
 			std::vector<std::pair<Feature, Feature>> matches = MatchDescriptors(images[i].features, images[j].features);
 
 			if (matches.size() < STEREO_OVERLAP_THRESHOLD)
 			{
+				cout << "Not enough overlap between " << images[i].filename << " and " << images[j].filename << endl;
 				continue;
 			}
 
@@ -185,15 +188,39 @@ int main(int argc, char** argv)
 			Matrix3f fundamentalMatrix;
 			if (!FindFundamentalMatrix(matches, fundamentalMatrix))
 			{
+				cout << "Failed to find fundamental matrix for pair " << images[i].filename << " and " << images[j].filename << endl;
 				continue;
 			}
 		
+			cout << "Fundamental matrix found for pair " << images[i].filename << " and " << images[j].filename << endl;
+
 			matrices[i][j].img1 = images[i];
 			matrices[i][j].img2 = images[j];
 			matrices[i][j].F = fundamentalMatrix;
 
+#ifdef DEBUG_FUNDAMENTAL
+			// How do I verify that this is the fundamental matrix?
+			// Surely it should transform matching feature points into each other?
+			// It transforms points into lines. So we can transform one image's point into
+			// a line in the other image, and then verify that the feature is on that line
+			// But we can also use the epipolar constraint to check
+			// verify the epipolar cinstraint
+			// This seems to be working. Each match has a pixel error of <5
+			for (auto& m : matches)
+			{
+				auto f = Vector3f(m.first.p.x, m.first.p.y, 1);
+				auto fprime = Vector3f(m.second.p.x, m.second.p.y, 1);
+
+				auto result = fprime.transpose() * fundamentalMatrix * f;
+				cout << result << endl << endl;
+			}
+#endif
+
+
 			// Now perform triangulation on each of those points to get the depth
 			// TODO: figure out structure here
+			
+
 		}
 	}
 
