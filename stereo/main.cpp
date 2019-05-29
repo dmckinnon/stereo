@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <Windows.h>
 #include "Stereography.h"
+#include "Estimation.h"
 
 using namespace std;
 using namespace cv;
@@ -71,6 +72,9 @@ struct StereoPair
 	- how to pull in images
 	- do we need camera matrices?
 	- TEST NORMALISATION
+
+	Question: why does a homography send points to points between two planes, but a fundamental matrix, 
+	          still a 3x3, send a point to a line, when it is specified more?
 
 */
 // Support function
@@ -170,9 +174,9 @@ int main(int argc, char** argv)
 			matrices[k][l] = p;
 		}
 	}
-	for (int i = 0; i < images.size(); ++i)
+	for (int i = 0; i < s; ++i)
 	{
-		for (int j = i+1; j < images.size(); ++j)
+		for (int j = i + 1; j < s; ++j)
 		{
 			cout << "Matching features for " << images[i].filename << " and " << images[j].filename << endl;
 			std::vector<std::pair<Feature, Feature>> matches = MatchDescriptors(images[i].features, images[j].features);
@@ -184,14 +188,13 @@ int main(int argc, char** argv)
 			}
 
 			// Compute Fundamental matrix
-			// TODO: test
 			Matrix3f fundamentalMatrix;
 			if (!FindFundamentalMatrix(matches, fundamentalMatrix))
 			{
 				cout << "Failed to find fundamental matrix for pair " << images[i].filename << " and " << images[j].filename << endl;
 				continue;
 			}
-		
+
 			cout << "Fundamental matrix found for pair " << images[i].filename << " and " << images[j].filename << endl;
 
 			matrices[i][j].img1 = images[i];
@@ -216,11 +219,59 @@ int main(int argc, char** argv)
 			}
 #endif
 
-
 			// Now perform triangulation on each of those points to get the depth
 			// TODO: figure out structure here
-			
+			// Need to find the depth of each point. Not just feature points, but every point. 
+			// But for that, we need to match pixels. 
+			// Perhaps for that we need the homography. 
+			// So that for each pixel location we transform that into the other camera, and then find the closest
+			// discrete pixel. 
+			// Lindstrom's triangulation assumes pixels are square; we do too, even though this is false
+			// we could stretch the image or just see what happens
+			// We'll get a homography between the images to get matching pixels. 
+			// Then for each pixel in image A, we project it into image B and get the closest point
+			// use these two points for the triangulation to create the depth map
 
+			// Get homography between the two images
+			Matrix3f H;
+			H.setZero();
+			if (!FindHomography(H, matches))
+			{
+				cout << "Couldn't find homography between " << images[i].filename << " and " << images[j].filename << endl;
+				continue;
+			}
+
+			// reopen the images
+			Mat img1 = imread(images[i].filename, IMREAD_GRAYSCALE);
+			Mat img2 = imread(images[j].filename, IMREAD_GRAYSCALE);
+			int imageWidth = img1.cols;
+			int imageHeight = img1.rows;
+			// Note that all images should in theory be the same size for depth maps. 
+			// For reconstruction this is irrelevant
+
+			// initialise the inverse-depth map
+			Mat inverseDepthMap = Mat(imageWidth, imageHeight, CV_32F, 0);
+
+			// loop over pixels in image 1
+			// project them to image 2
+			// triangulate to get depth
+			// save inverse depth at pixel location from image 1 in the inverse depth map
+			// TODO: is this how to do it? This does it from one view. Can we artificially create a view?
+			for (int y = 0; y < imageHeight; ++y)
+			{
+				for (int x = 0; x < imageWidth; ++x)
+				{
+					Vector3f pixel(x, y, 1);
+					Vector3f pixelPrime = H * pixel;
+					pixelPrime /= pixelPrime(2);
+
+				    // Triangulate, which means back to the papers
+
+					// inverseDepth = 1/d;
+				}
+			}
+
+			// Display inverse depth image
 		}
 	}
 
