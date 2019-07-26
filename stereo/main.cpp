@@ -32,6 +32,7 @@ struct StereoPair
 	ImageDescriptor img1;
 	ImageDescriptor img2;
 	Matrix3f F;
+	Matrix3f E;
 };
 
 /*
@@ -168,11 +169,13 @@ int main(int argc, char** argv)
 		string imagePath = imageFolder + "\\" + imageName;
 		Mat img = imread(imagePath, IMREAD_GRAYSCALE);
 
-#ifndef ESSENTIAL_MATRIX
 		// Scale the image to be square along the smaller axis
-		int size = min(img.cols, img.rows);
-		resize(img, img, Size(size, size), 0, 0, CV_INTER_LINEAR);
-#endif
+		// ONLY IF we have no calibration matrices
+		if (calibrationMatrices.empty())
+		{
+			int size = min(img.cols, img.rows);
+			resize(img, img, Size(size, size), 0, 0, CV_INTER_LINEAR);
+		}
 
 		// Find FAST features
 		vector<Feature> features;
@@ -236,8 +239,6 @@ int main(int argc, char** argv)
 				continue;
 			}
 
-#ifndef ESSENTIAL_MATRIX
-			// We don't have camera calibration matrices yet
 			// Compute Fundamental matrix
 			Matrix3f fundamentalMatrix;
 			if (!FindFundamentalMatrix(matches, fundamentalMatrix))
@@ -251,7 +252,8 @@ int main(int argc, char** argv)
 			matrices[i][j].img1 = images[i];
 			matrices[i][j].img2 = images[j];
 			matrices[i][j].F = fundamentalMatrix;
-#endif
+			// Now compute the Essential matrix
+			matrices[i][j].E = images[j].K.transpose() * fundamentalMatrix * images[i].K;
 
 #ifdef DEBUG_FUNDAMENTAL
 			// How do I verify that this is the fundamental matrix?
@@ -304,6 +306,16 @@ int main(int argc, char** argv)
 			// initialise the inverse-depth map
 			Mat inverseDepthMap = Mat(imageWidth, imageHeight, CV_32F, 0);
 
+			// TODO: should do this just over features, not all pixels
+			// over all matching pairs of features
+			// Perform Lindstrom optimisation
+			// Then naive triangulation to get the depth of each feature with essential matrix
+
+
+
+
+
+
 			// loop over pixels in image 1
 			// project them to image 2
 			// triangulate to get depth
@@ -318,6 +330,10 @@ int main(int argc, char** argv)
 					pixelPrime /= pixelPrime(2);
 
 				    // Triangulate a single pair of points, which means back to the papers
+
+					// Ok, so I have the essential matrix.
+					// Need to revisit the theory of this, again
+					// and revise
 
 					// Check that depth isn't zero - if it is, tings are wrong
 
