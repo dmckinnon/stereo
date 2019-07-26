@@ -131,3 +131,34 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 
 	return true;
 }
+
+/*
+	Triangulate using Peter Lindstrom's algorithm
+	https://e-reports-ext.llnl.gov/pdf/384387.pdf
+	We use algorithm niter1 in Listing 3
+
+	If we want to use this with no scaling, then we must use the Essential matrix.
+	Once we have the camera matrix per image, this is easy. 
+
+	To do this with the Fundamental matrix, we replace E with F in the algorithm, but
+	for the Euclidean reprojection error to make sense pixels must be square. So we have to scale. 
+
+	The scaling is done when we import images, and this is preserved the whole way, to avoid scaling back
+	and forth, losing image information. 
+
+*/
+// Helpers
+// Actual Function
+float Triangulate2Points(const Vector3f& p1, const Vector3f& p2, const Matrix3f& F)
+{
+	// This is invalid. Hopefully before the end we make it valid
+	float depth = 0;
+
+	// Lindstrom's algorithm gives us the optimal points x and xprime
+	// So we modify p1 and p2, and then use them to compute dcpeth. 
+	// How to actually compute depth from them though?
+	// How to solve the geometric problem of given x and x', what's the depth of X?
+
+
+	return depth;
+}

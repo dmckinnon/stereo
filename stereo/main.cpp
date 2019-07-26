@@ -2,6 +2,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <sstream>
 #include <vector>
@@ -23,7 +24,7 @@ struct ImageDescriptor
 {
 	std::vector<Feature> features;
 	std::string filename;
-	// potentially camera matrix
+	MatrixXf K;
 };
 
 struct StereoPair
@@ -103,11 +104,49 @@ int main(int argc, char** argv)
 	if (argc < 2 || strcmp(argv[1], "-h") == 0)
 	{
 		cout << "Usage:" << endl;
-		cout << "stereo.exe <FolderToImages>" << endl;
+		cout << "stereo.exe <Folder to images> <Folder to calibration matrices>" << endl;
 		exit(1);
 	}
-	string folder = argv[1];
-	auto files = get_all_files_names_within_folder(folder);
+	string imageFolder = argv[1];
+	auto imageFiles = get_all_files_names_within_folder(imageFolder);
+
+	// Collect the camera matrices
+	// Note that the camera matrices are not necessarily at the centre of their own coordinate system;
+	// they may have encoded some rigid-body transform in there as well?
+	vector<MatrixXf> calibrationMatrices;
+	if (argc >= 3)
+	{
+		string calibFolder = argv[2];
+		auto calibFiles = get_all_files_names_within_folder(calibFolder);
+		for (const auto& calib : calibFiles)
+		{
+			ifstream calibFile;
+			calibFile.open(calibFolder + "\\" + calib);
+			if (calibFile.is_open())
+			{
+				string line;
+				if (getline(calibFile, line))
+				{
+					if (strcmp(line.c_str(), "CONTOUR") == 0)
+					{
+						// This is a good calib file, so read in the data
+						int i = 0;
+						MatrixXf K(3,4);
+						K.setZero();
+						while (getline(calibFile, line))
+						{
+							stringstream ss(line);
+							for (int j = 0; j < 4; ++j)
+								ss >> K(i,j);
+							i += 1;
+						}
+						calibrationMatrices.push_back(K);
+						cout << K << endl;
+					}
+				}
+			}
+		}
+	}
 
 	// How shall we have the architecture?
 	// open image, then store extracted features, name, in a structure
@@ -123,10 +162,17 @@ int main(int argc, char** argv)
 
 	// Loop over the images to pull out features 
 	vector<ImageDescriptor> images;
-	for (const auto& imageName : files)
+	int index = 0;
+	for (const auto& imageName : imageFiles)
 	{
-		string imagePath = folder + "\\" + imageName;
+		string imagePath = imageFolder + "\\" + imageName;
 		Mat img = imread(imagePath, IMREAD_GRAYSCALE);
+
+#ifndef ESSENTIAL_MATRIX
+		// Scale the image to be square along the smaller axis
+		int size = min(img.cols, img.rows);
+		resize(img, img, Size(size, size), 0, 0, CV_INTER_LINEAR);
+#endif
 
 		// Find FAST features
 		vector<Feature> features;
@@ -152,9 +198,12 @@ int main(int argc, char** argv)
 
 		cout << "Image descriptor created for image " << imageName << endl;
 		ImageDescriptor i;
+		i.K = calibrationMatrices[index];
 		i.filename = imageName;
 		i.features = goodFeatures;
 		images.push_back(i);
+
+		index++;
 	}
 
 	// Run over each possible pair of images and count how many features they have in common. If more
@@ -187,6 +236,8 @@ int main(int argc, char** argv)
 				continue;
 			}
 
+#ifndef ESSENTIAL_MATRIX
+			// We don't have camera calibration matrices yet
 			// Compute Fundamental matrix
 			Matrix3f fundamentalMatrix;
 			if (!FindFundamentalMatrix(matches, fundamentalMatrix))
@@ -200,6 +251,7 @@ int main(int argc, char** argv)
 			matrices[i][j].img1 = images[i];
 			matrices[i][j].img2 = images[j];
 			matrices[i][j].F = fundamentalMatrix;
+#endif
 
 #ifdef DEBUG_FUNDAMENTAL
 			// How do I verify that this is the fundamental matrix?
@@ -265,7 +317,9 @@ int main(int argc, char** argv)
 					Vector3f pixelPrime = H * pixel;
 					pixelPrime /= pixelPrime(2);
 
-				    // Triangulate, which means back to the papers
+				    // Triangulate a single pair of points, which means back to the papers
+
+					// Check that depth isn't zero - if it is, tings are wrong
 
 					// inverseDepth = 1/d;
 				}
