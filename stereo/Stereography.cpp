@@ -143,21 +143,58 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	To do this with the Fundamental matrix, we replace E with F in the algorithm, but
 	for the Euclidean reprojection error to make sense pixels must be square. So we have to scale. 
 
-	The scaling is done when we import images, and this is preserved the whole way, to avoid scaling back
-	and forth, losing image information. 
+	First we optimise with Lindstrom's algorithm, and then we use the naive depth computation. 
+
+	I call this optimisation, because it's not really triangulation; all it does
+	is improve x and x' for actually getting the depth. The depth-getting algorithm comes next.
 
 */
 // Helpers
+void LindstromOptimisation(Vector3f& x, Vector3f& xprime, const Matrix3f E)
+{
+	MatrixXf S(2, 3);
+	S << 1, 0, 0,
+		0, 1, 0;
+
+	Matrix3f Etilde = S * E * S.transpose();
+
+	Vector3f n = S * E * xprime;
+	Vector3f nprime = S * E.transpose() * x;
+	RowVector3f nT = n.transpose();
+	RowVector3f nprimeT = nprime.transpose();
+	float a = nT * Etilde * nprime;
+	float b = 0.5f * (nT*n + nprimeT*nprime)(0);
+	float c = x.transpose() * E * xprime;
+	float d = sqrt(b*b - a*c);
+	float lambda = c / (b + d);
+	Vector3f x_delta = lambda * n;
+	Vector3f xprime_delta = lambda * nprime;
+	n = n - Etilde * xprime_delta;
+	nT = n.transpose();
+	nprime = nprime - Etilde * x_delta;
+	nprimeT = nprime.transpose();
+	x_delta = ((x_delta.transpose()*n)(0) / (nT*n)(0)) * n;
+	xprime_delta = ((xprime_delta.transpose()*nprime)(0) / (nprimeT*nprime)(0)) * nprime;
+	x = x - S.transpose() * x_delta;
+	xprime = xprime - S.transpose() * xprime_delta;
+
+}
 // Actual Function
-float Triangulate2Points(const Vector3f& p1, const Vector3f& p2, const Matrix3f& F)
+float Triangulate(Point2f& x, Point2f& xprime, const Matrix3f E)
 {
 	// This is invalid. Hopefully before the end we make it valid
-	float depth = 0;
+	float depth = BAD_DEPTH;
 
 	// Lindstrom's algorithm gives us the optimal points x and xprime
-	// So we modify p1 and p2, and then use them to compute dcpeth. 
-	// How to actually compute depth from them though?
-	// How to solve the geometric problem of given x and x', what's the depth of X?
+	// So we modify p1 and p2, and then use them to compute depth. 
+	Vector3f pointX(x.x, x.y, 1);
+	Vector3f pointXPrime(xprime.x, xprime.y, 1);
+	LindstromOptimisation(pointX, pointXPrime, E);
+
+	// Now that we have the very best points we can get, we use the naive depth-getter
+	// This basically shoots a ray out from each point, and draws a line between the two rays
+	// and finds the point on each ray that minimises the length of this line. 
+	// Basically the most agreeable point. The depth along each ray, then, is the point depth. 
 
 
 	return depth;

@@ -46,7 +46,7 @@ struct Feature
 	float angle;
 	FeatureDescriptor desc;
 	float distFromBestMatch;
-	bool saddle;
+	float depth;
 };
 
 // Feature comparator

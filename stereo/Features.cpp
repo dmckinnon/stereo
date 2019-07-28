@@ -90,7 +90,7 @@ vector<Feature> FindHarrisCorners(const Mat& img, int nmsWindowSize)
 				f.p.x = x;
 				f.p.y = y;
 				f.score = score;
-				f.saddle = detM < 0; // if  < 0, one eigenvalue is positive, the other negative
+				//f.saddle = detM < 0; // if  < 0, one eigenvalue is positive, the other negative
 				features.push_back(f);
 			}
 		}

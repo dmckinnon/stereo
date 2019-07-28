@@ -286,6 +286,39 @@ int main(int argc, char** argv)
 			// Then for each pixel in image A, we project it into image B and get the closest point
 			// use these two points for the triangulation to create the depth map
 
+			// Not sure we need any of the below. Starting with just triangulating the features that we have
+			// For all features that these images share, compute the depth of each feature with respect to the ith
+			// camera. This can easily be transformed into the jth coordinate frame, as we have the essential matrix
+			// From Lindstrom's paper, copying notation, we have that
+			// xEx' = 0
+			// and we follow this convention, where m.first is x', and m.second is x
+			for (auto& m : matches)
+			{
+				Point2f xprime = m.first.p;
+				Point2f x = m.second.p;
+				float depth = Triangulate(x, xprime, matrices[i][j].E);
+
+				if (depth == BAD_DEPTH)
+				{
+					m.first.depth = BAD_DEPTH;
+					m.second.depth = BAD_DEPTH;
+					continue;
+				}
+
+				// Is this depth in first frame or second frame?
+				m.first.depth = depth;
+				m.second.depth = 0;// transform the point in 3D from first camera to second camera
+			}
+
+
+
+
+
+
+
+
+
+
 			// Get homography between the two images
 			Matrix3f H;
 			H.setZero();
