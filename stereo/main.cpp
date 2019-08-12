@@ -292,89 +292,23 @@ int main(int argc, char** argv)
 			// From Lindstrom's paper, copying notation, we have that
 			// xEx' = 0
 			// and we follow this convention, where m.first is x', and m.second is x
-			for (auto& m : matches)
+			for (auto& match : matches)
 			{
-				Point2f xprime = m.first.p;
-				Point2f x = m.second.p;
-				float depth = Triangulate(x, xprime, matrices[i][j].E);
-
-				if (depth == BAD_DEPTH)
+				Point2f xprime = match.first.p;
+				Point2f x = match.second.p;
+				float d0 = 0;
+				float d1 = 0;
+				if (!Triangulate(d0, d1, x, xprime, matrices[i][j].E))
 				{
-					m.first.depth = BAD_DEPTH;
-					m.second.depth = BAD_DEPTH;
+					match.first.depth = BAD_DEPTH;
+					match.second.depth = BAD_DEPTH;
 					continue;
 				}
 
 				// Is this depth in first frame or second frame?
-				m.first.depth = depth;
-				m.second.depth = 0;// transform the point in 3D from first camera to second camera
+				match.first.depth = d0;
+				match.second.depth = d1;// transform the point in 3D from first camera to second camera
 			}
-
-
-
-
-
-
-
-
-
-
-			// Get homography between the two images
-			Matrix3f H;
-			H.setZero();
-			if (!FindHomography(H, matches))
-			{
-				cout << "Couldn't find homography between " << images[i].filename << " and " << images[j].filename << endl;
-				continue;
-			}
-
-			// reopen the images
-			Mat img1 = imread(images[i].filename, IMREAD_GRAYSCALE);
-			Mat img2 = imread(images[j].filename, IMREAD_GRAYSCALE);
-			int imageWidth = img1.cols;
-			int imageHeight = img1.rows;
-			// Note that all images should in theory be the same size for depth maps. 
-			// For reconstruction this is irrelevant
-
-			// initialise the inverse-depth map
-			Mat inverseDepthMap = Mat(imageWidth, imageHeight, CV_32F, 0);
-
-			// TODO: should do this just over features, not all pixels
-			// over all matching pairs of features
-			// Perform Lindstrom optimisation
-			// Then naive triangulation to get the depth of each feature with essential matrix
-
-
-
-
-
-
-			// loop over pixels in image 1
-			// project them to image 2
-			// triangulate to get depth
-			// save inverse depth at pixel location from image 1 in the inverse depth map
-			// TODO: is this how to do it? This does it from one view. Can we artificially create a view?
-			for (int y = 0; y < imageHeight; ++y)
-			{
-				for (int x = 0; x < imageWidth; ++x)
-				{
-					Vector3f pixel(x, y, 1);
-					Vector3f pixelPrime = H * pixel;
-					pixelPrime /= pixelPrime(2);
-
-				    // Triangulate a single pair of points, which means back to the papers
-
-					// Ok, so I have the essential matrix.
-					// Need to revisit the theory of this, again
-					// and revise
-
-					// Check that depth isn't zero - if it is, tings are wrong
-
-					// inverseDepth = 1/d;
-				}
-			}
-
-			// Display inverse depth image
 		}
 	}
 

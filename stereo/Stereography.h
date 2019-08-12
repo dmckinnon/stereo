@@ -14,4 +14,4 @@
 
 bool FindFundamentalMatrix(const std::vector<std::pair<Feature, Feature>>& matches, Eigen::Matrix3f& F);
 
-float Triangulate(cv::Point2f& x, cv::Point2f& xprime, const Eigen::Matrix3f E);
+bool Triangulate(float& depth0, float& depth1, cv::Point2f& x, cv::Point2f& xprime, const Eigen::Matrix3f E);

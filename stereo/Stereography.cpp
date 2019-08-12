@@ -150,8 +150,30 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 
 */
 // Helpers
+bool DecomposeEssentialMatrix(const Matrix3f& E, Matrix3f& R, Vector3f& t)
+{
+	BDCSVD<MatrixXf> svd(E, ComputeFullU | ComputeFullV);
+	if (!svd.computeV())
+		return false;
+	if (!svd.computeU())
+		return false;
+	auto& v = svd.matrixV();
+	auto& u = svd.matrixU();
+
+	Matrix3f W;
+	W << 0, -1, 0,
+		 1,  0, 0,
+		 0,  0, 1;
+
+	R = u * W * v.transpose();
+	t(0) = u(0,2);
+	t(1) = u(1, 2);
+	t(2) = u(2, 2);
+}
 void LindstromOptimisation(Vector3f& x, Vector3f& xprime, const Matrix3f E)
 {
+	// TODO test Lindstrom optimisation
+
 	MatrixXf S(2, 3);
 	S << 1, 0, 0,
 		0, 1, 0;
@@ -177,14 +199,10 @@ void LindstromOptimisation(Vector3f& x, Vector3f& xprime, const Matrix3f E)
 	xprime_delta = ((xprime_delta.transpose()*nprime)(0) / (nprimeT*nprime)(0)) * nprime;
 	x = x - S.transpose() * x_delta;
 	xprime = xprime - S.transpose() * xprime_delta;
-
 }
 // Actual Function
-float Triangulate(Point2f& x, Point2f& xprime, const Matrix3f E)
+bool Triangulate(float& depth0, float& depth1, Point2f& x, Point2f& xprime, const Matrix3f E)
 {
-	// This is invalid. Hopefully before the end we make it valid
-	float depth = BAD_DEPTH;
-
 	// Lindstrom's algorithm gives us the optimal points x and xprime
 	// So we modify p1 and p2, and then use them to compute depth. 
 	Vector3f pointX(x.x, x.y, 1);
@@ -196,6 +214,41 @@ float Triangulate(Point2f& x, Point2f& xprime, const Matrix3f E)
 	// and finds the point on each ray that minimises the length of this line. 
 	// Basically the most agreeable point. The depth along each ray, then, is the point depth. 
 
+	Vector3f t(0, 0, 0);
+	Matrix3f R;
+	R.setZero();
+	if (!DecomposeEssentialMatrix(E, R, t))
+	{
+		return BAD_DEPTH;
+	}
 
-	return depth;
+	Vector3f u = R * Vector3f(pointX(0) / pointX(2), pointX(1) / pointX(2), 1);
+	Vector3f v = Vector3f(pointXPrime(0) / pointXPrime(2), pointXPrime(1) / pointXPrime(2), 1);
+
+	u = u / u.norm();
+	v = v / v.norm();
+
+	double a = u.dot(t);
+	double b = u.dot(u);
+	double c = u.dot(v);
+	double d = v.dot(t);
+	double e = v.dot(v);
+
+	if (fabs(c * c - b * e) < 1e-9) return false;
+	if (fabs(c) < 1e-9) return false;
+
+	double d0 = (a * e - c * d) / (c * c - b * e);
+	double d1 = (a + b * d0) / c;
+
+	Vector3f xyz0 = t + d0 * u;
+	Vector3f xyz1 = d1 * v;
+
+	Vector3f midpoint = 0.5 * (xyz0 + xyz1);
+	Vector3f point3D = E.inverse() * midpoint;
+	depth0 = d0;
+	depth1 = d1;
+
+	// It's worth noting that we compute the final 3d point, and the distance in both cameras
+
+	return true;
 }
