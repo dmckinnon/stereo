@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
@@ -13,12 +14,21 @@
 #include <Windows.h>
 #include "Stereography.h"
 #include "Estimation.h"
+#include <stdlib.h>
+#include <GL/glew.h> // This must appear before freeglut.h
+#include <GL/freeglut.h>
 
 using namespace std;
 using namespace cv;
 using namespace Eigen;
 
 #define STEREO_OVERLAP_THRESHOLD 50
+
+#define BUFFER_OFFSET(offset) ((GLvoid *) offset)
+
+GLuint buffer = 0;
+GLuint vPos;
+GLuint program;
 
 struct ImageDescriptor
 {
@@ -74,11 +84,15 @@ struct StereoPair
 	- how to pull in images
 	- do we need camera matrices?
 	- TEST NORMALISATION
+	- bring in openGL for visualisation: https://sites.google.com/site/gsucomputergraphics/educational/set-up-opengl
 
 	Question: why does a homography send points to points between two planes, but a fundamental matrix, 
 	          still a 3x3, send a point to a line, when it is specified more?
 
 */
+void init();
+void reshape(int width, int height);
+void display();
 // Support function
 vector<string> get_all_files_names_within_folder(string folder)
 {
@@ -101,6 +115,28 @@ vector<string> get_all_files_names_within_folder(string folder)
 // Main
 int main(int argc, char** argv)
 {
+	/* Some opengl rubbish to test that I have this working */
+	glutInit(&argc, argv);
+
+	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
+
+	glutCreateWindow(argv[0]);
+
+	glewInit();
+
+	init();
+
+	// Register the display callback function
+	glutDisplayFunc(display);
+
+	// Register the reshape callback function
+	glutReshapeFunc(reshape);
+
+	// Start the event loop
+	glutMainLoop();
+
+
+
 	// first arg is the folder containing all the images
 	if (argc < 2 || strcmp(argv[1], "-h") == 0)
 	{
@@ -308,9 +344,122 @@ int main(int argc, char** argv)
 				// Is this depth in first frame or second frame?
 				match.first.depth = d0;
 				match.second.depth = d1;// transform the point in 3D from first camera to second camera
+
+				// Now draw the points? Do I need OpenGL here to create an environment in which I can pan?
+				// Probably do. Next step .... 
 			}
 		}
 	}
 
 	return 0;
 }
+
+/*
+	OpenGL helpers for drawing
+	I couldn't figure out how to have this in a different file, so it's all here
+*/
+void init()
+{
+	// Three vertexes that define a triangle. 
+	GLfloat vertices[][4] = {
+		{-0.75, -0.5, 0.0, 1.0},
+		{0.75, -0.5, 0.0, 1.0},
+		{0.0, 0.75, 0.0, 1.0}
+	};
+
+	// Get an unused buffer object name. Required after OpenGL 3.1. 
+	glGenBuffers(1, &buffer);
+
+	// If it's the first time the buffer object name is used, create that buffer. 
+	glBindBuffer(GL_ARRAY_BUFFER, buffer);
+
+	// Allocate memory for the active buffer object. 
+	// 1. Allocate memory on the graphics card for the amount specified by the 2nd parameter.
+	// 2. Copy the data referenced by the third parameter (a pointer) from the main memory to the 
+	//    memory on the graphics card. 
+	// 3. If you want to dynamically load the data, then set the third parameter to be NULL. 
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+	// OpenGL vertex shader source code
+	const char* vSource = {
+		"#version 330\n"
+		"in vec4 vPos;"
+		"void main() {"
+		"	gl_Position = vPos * vec4(1.0f, 1.0f, 1.0f, 1.0f);"
+		"}"
+	};
+
+	// OpenGL fragment shader source code
+	const char* fSource = {
+		"#version 330\n"
+		"out vec4 fragColor;"
+		"void main() {"
+		"	fragColor = vec4(0.8, 0.8, 0, 1);"
+		"}"
+	};
+
+	// Declare shader IDs
+	GLuint vShader, fShader;
+
+	// Create empty shader objects
+	vShader = glCreateShader(GL_VERTEX_SHADER);
+	fShader = glCreateShader(GL_FRAGMENT_SHADER);
+
+	// Attach shader source code the shader objects
+	glShaderSource(vShader, 1, &vSource, NULL);
+	glShaderSource(fShader, 1, &fSource, NULL);
+
+	// Compile shader objects
+	glCompileShader(vShader);
+	glCompileShader(fShader);
+
+	// Create an empty shader program object
+	program = glCreateProgram();
+
+	// Attach vertex and fragment shaders to the shader program
+	glAttachShader(program, vShader);
+	glAttachShader(program, fShader);
+
+	// Link the shader program
+	glLinkProgram(program);
+
+	// Retrieve the ID of a vertex attribute, i.e. position
+	vPos = glGetAttribLocation(program, "vPos");
+
+	// Specify the background color
+	glClearColor(0, 0, 0, 1);
+}
+
+void reshape(int width, int height)
+{
+	// Specify the width and height of the picture within the window
+	glViewport(0, 0, width, height);
+}
+
+void display()
+{
+	// Clear the window with the background color
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	// Activate the shader program
+	glUseProgram(program);
+
+	// If the buffer object already exists, make that buffer the current active one. 
+	// If the buffer object name is 0, disable buffer objects. 
+	glBindBuffer(GL_ARRAY_BUFFER, buffer);
+
+	// Associate the vertex array in the buffer object with the vertex attribute: "position"
+	glVertexAttribPointer(vPos, 4, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(0));
+
+	// Enable the vertex attribute: "position"
+	glEnableVertexAttribArray(vPos);
+
+	// Start the shader program
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+
+	// Refresh the window
+	glutSwapBuffers();
+}
+
+
+

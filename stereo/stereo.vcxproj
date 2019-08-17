@@ -90,12 +90,12 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>E:\d_mcc\Projects\Eigen;E:\d_mcc\Projects\Eigen\Eigen\src\Jacobi;E:\d_mcc\Projects\Eigen\Eigen\src\SVD;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\flann\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\calib3d\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\build\install\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\highgui\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\imgcodecs\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\core\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\features2d\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\d_mcc\Projects\OpenGLMath\glm;E:\d_mcc\Projects\Eigen;E:\d_mcc\Projects\Eigen\Eigen\src\Jacobi;E:\d_mcc\Projects\Eigen\Eigen\src\SVD;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\flann\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\calib3d\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\build\install\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\highgui\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\imgcodecs\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\core\include;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\opencv-3.4.1\modules\features2d\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>E:\d_mcc\Projects\OpenCV\opencv-3.4.1\build\lib\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opencv_core341d.lib;opencv_flann341d.lib;opencv_calib3d341d.lib;opencv_features2d341d.lib;opencv_highgui341d.lib;opencv_imgproc341d.lib;opencv_imgcodecs341d.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>E:\d_mcc\Projects\glew\glew-2.1.0\lib\Debug\Win32;E:\d_mcc\Projects\freeglut\bin\lib\Release;E:\d_mcc\Projects\OpenCV\opencv-3.4.1\build\lib\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>freeglut.lib;glew32d.lib;opencv_core341d.lib;opencv_flann341d.lib;opencv_calib3d341d.lib;opencv_features2d341d.lib;opencv_highgui341d.lib;opencv_imgproc341d.lib;opencv_imgcodecs341d.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -145,6 +145,7 @@
     <None Include="opencv_imgproc341d.dll" />
     <None Include="opencv_photo341d.dll" />
     <None Include="opencv_videoio341d.dll" />
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Estimation.h" />
@@ -153,5 +154,14 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="packages\nupengl.core.redist.0.1.0.1\build\native\nupengl.core.redist.targets" Condition="Exists('packages\nupengl.core.redist.0.1.0.1\build\native\nupengl.core.redist.targets')" />
+    <Import Project="packages\nupengl.core.0.1.0.1\build\native\nupengl.core.targets" Condition="Exists('packages\nupengl.core.0.1.0.1\build\native\nupengl.core.targets')" />
   </ImportGroup>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('packages\nupengl.core.redist.0.1.0.1\build\native\nupengl.core.redist.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\nupengl.core.redist.0.1.0.1\build\native\nupengl.core.redist.targets'))" />
+    <Error Condition="!Exists('packages\nupengl.core.0.1.0.1\build\native\nupengl.core.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\nupengl.core.0.1.0.1\build\native\nupengl.core.targets'))" />
+  </Target>
 </Project>
