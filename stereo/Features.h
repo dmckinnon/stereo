@@ -49,6 +49,22 @@ struct Feature
 	float depth;
 };
 
+/*
+	Equality of features
+	Two features are equal if their descriptors are equal
+*/
+inline bool operator==(const Feature& a, const Feature& b)
+{
+	for (int i = 0; i < DESC_LENGTH; ++i)
+	{
+		if (a.desc.vec[i] != b.desc.vec[i])
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 // Feature comparator
 bool FeatureCompare(Feature a, Feature b);
 

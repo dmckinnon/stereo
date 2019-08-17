@@ -116,7 +116,7 @@ vector<string> get_all_files_names_within_folder(string folder)
 int main(int argc, char** argv)
 {
 	/* Some opengl rubbish to test that I have this working */
-	glutInit(&argc, argv);
+	/*glutInit(&argc, argv);
 
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
 
@@ -133,7 +133,7 @@ int main(int argc, char** argv)
 	glutReshapeFunc(reshape);
 
 	// Start the event loop
-	glutMainLoop();
+	glutMainLoop();*/
 
 
 
@@ -308,6 +308,13 @@ int main(int argc, char** argv)
 				cout << result << endl << endl;
 			}
 #endif
+			// So what we need to do next is 
+			// 1) store the depth per feature wrt each camera
+			// 2) pick a camera, and get all points wrt it via some path of cameras and covisible points
+			// 3) render all points wrt one camera
+
+
+
 
 			// Now perform triangulation on each of those points to get the depth
 			// TODO: figure out structure here
@@ -345,11 +352,34 @@ int main(int argc, char** argv)
 				match.first.depth = d0;
 				match.second.depth = d1;// transform the point in 3D from first camera to second camera
 
-				// Now draw the points? Do I need OpenGL here to create an environment in which I can pan?
-				// Probably do. Next step .... 
+				// Transform points into each camera frame
+				
+				// Copy the depths to the StereoPair array
+				for (auto& f : images[i].features)
+				{
+					if (f == match.first)
+					{
+						f.depth = match.first.depth;
+					}
+				}
+				for (auto& f : images[j].features)
+				{
+					if (f == match.second)
+					{
+						f.depth = match.second.depth;
+					}
+				}
 			}
 		}
 	}
+
+	// Find covisibility of points to get all points in the one frame
+	// for each camera
+	//	find the chain of transforms to C0 - shortest path
+	// 
+	// 
+
+	// Render points
 
 	return 0;
 }
