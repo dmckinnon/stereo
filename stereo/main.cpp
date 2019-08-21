@@ -134,7 +134,7 @@ int main(int argc, char** argv)
 	glShadeModel(GL_SMOOTH);   // Enable smooth shading
 	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Nice perspective corrections
 	// Start the event loop
-	glutMainLoop();
+	glutMainLoopEvent();
 
 
 
