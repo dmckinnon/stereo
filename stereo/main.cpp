@@ -116,24 +116,25 @@ vector<string> get_all_files_names_within_folder(string folder)
 int main(int argc, char** argv)
 {
 	/* Some opengl rubbish to test that I have this working */
-	/*glutInit(&argc, argv);
-
+	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
-
-	glutCreateWindow(argv[0]);
-
-	glewInit();
-
-	init();
+	glutInitWindowSize(640, 480);   // Set the window's initial width & height
+	glutInitWindowPosition(50, 50); // Position the window's initial top-left corner
+	glutCreateWindow("Point Cloud");          // Create window with the given title
 
 	// Register the display callback function
 	glutDisplayFunc(display);
 
 	// Register the reshape callback function
 	glutReshapeFunc(reshape);
-
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Set background color to black and opaque
+	glClearDepth(1.0f);                   // Set background depth to farthest
+	glEnable(GL_DEPTH_TEST);   // Enable depth testing for z-culling
+	glDepthFunc(GL_LEQUAL);    // Set the type of depth-test
+	glShadeModel(GL_SMOOTH);   // Enable smooth shading
+	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Nice perspective corrections
 	// Start the event loop
-	glutMainLoop();*/
+	glutMainLoop();
 
 
 
@@ -384,10 +385,66 @@ int main(int argc, char** argv)
 	return 0;
 }
 
+/* ############################################################################
+    OpenGL section below
+   ############################################################################ */
+
 /*
 	OpenGL helpers for drawing
 	I couldn't figure out how to have this in a different file, so it's all here
 */
+
+// Draw a cube to some scale
+void DrawCube(const float& scale, const float& r, const float& g, const float& b)
+{
+	// Top face (y = scale)
+	glBegin(GL_QUADS);
+		// Define vertices in counter-clockwise (CCW) order with normal pointing out
+		glColor3f(r, g, b);
+		glVertex3f(scale, scale, -scale);
+		glVertex3f(-scale, scale, -scale);
+		glVertex3f(-scale, scale, scale);
+		glVertex3f(scale, scale, scale);
+
+		// Bottom face (y = -scale)
+		glColor3f(scale, 0.5f, 0.0f);
+		glVertex3f(scale, -scale, scale);
+		glVertex3f(-scale, -scale, scale);
+		glVertex3f(-scale, -scale, -scale);
+		glVertex3f(scale, -scale, -scale);
+
+		// Front face  (z = scale)
+		glColor3f(scale, 0.0f, 0.0f);
+		glVertex3f(scale, scale, scale);
+		glVertex3f(-scale, scale, scale);
+		glVertex3f(-scale, -scale, scale);
+		glVertex3f(scale, -scale, scale);
+
+		// Back face (z = -scale)
+		glColor3f(scale, scale, 0.0f);
+		glVertex3f(scale, -scale, -scale);
+		glVertex3f(-scale, -scale, -scale);
+		glVertex3f(-scale, scale, -scale);
+		glVertex3f(scale, scale, -scale);
+
+		// Left face (x = -scale)
+		glColor3f(0.0f, 0.0f, scale);
+		glVertex3f(-scale, scale, scale);
+		glVertex3f(-scale, scale, -scale);
+		glVertex3f(-scale, -scale, -scale);
+		glVertex3f(-scale, -scale, scale);
+
+		// Right face (x = scale)
+		glColor3f(scale, 0.0f, scale);
+		glVertex3f(scale, scale, -scale);
+		glVertex3f(scale, scale, scale);
+		glVertex3f(scale, -scale, scale);
+		glVertex3f(scale, -scale, -scale);
+	glEnd();  // End of drawing color-cube
+}
+
+
+
 void init()
 {
 	// Three vertexes that define a triangle. 
@@ -462,8 +519,18 @@ void init()
 
 void reshape(int width, int height)
 {
-	// Specify the width and height of the picture within the window
+	// Compute aspect ratio of the new window
+	if (height == 0) height = 1;                // To prevent divide by 0
+	GLfloat aspect = (GLfloat)width / (GLfloat)height;
+
+	// Set the viewport to cover the new window
 	glViewport(0, 0, width, height);
+
+	// Set the aspect ratio of the clipping volume to match the viewport
+	glMatrixMode(GL_PROJECTION);  // To operate on the Projection matrix
+	glLoadIdentity();             // Reset
+	// Enable perspective projection with fovy, aspect, zNear and zFar
+	gluPerspective(45.0f, aspect, 0.1f, 100.0f);
 }
 
 void display()
@@ -471,21 +538,17 @@ void display()
 	// Clear the window with the background color
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	// Activate the shader program
-	glUseProgram(program);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear color and depth buffers
+	glMatrixMode(GL_MODELVIEW);     // To operate on model-view matrix
 
-	// If the buffer object already exists, make that buffer the current active one. 
-	// If the buffer object name is 0, disable buffer objects. 
-	glBindBuffer(GL_ARRAY_BUFFER, buffer);
+	glLoadIdentity();                 // Reset the model-view matrix
+	glTranslatef(0.0f, 0.0f, -6.0f);  // Move into the screen to render the points
 
-	// Associate the vertex array in the buffer object with the vertex attribute: "position"
-	glVertexAttribPointer(vPos, 4, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(0));
+	// Render the points as cubes
+	DrawCube(0.5f, 0.f, 1.f, 0.f);
 
-	// Enable the vertex attribute: "position"
-	glEnableVertexAttribArray(vPos);
-
-	// Start the shader program
-	glDrawArrays(GL_TRIANGLES, 0, 3);
+	// Render a pyramid consists of 4 triangles
+	glLoadIdentity();                  // Reset the model-view matrix
 
 	// Refresh the window
 	glutSwapBuffers();
