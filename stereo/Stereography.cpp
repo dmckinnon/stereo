@@ -219,7 +219,7 @@ bool Triangulate(float& depth0, float& depth1, Point2f& x, Point2f& xprime, cons
 	R.setZero();
 	if (!DecomposeEssentialMatrix(E, R, t))
 	{
-		return BAD_DEPTH;
+		return false;
 	}
 
 	Vector3f u = R * Vector3f(pointX(0) / pointX(2), pointX(1) / pointX(2), 1);
@@ -228,17 +228,17 @@ bool Triangulate(float& depth0, float& depth1, Point2f& x, Point2f& xprime, cons
 	u = u / u.norm();
 	v = v / v.norm();
 
-	double a = u.dot(t);
-	double b = u.dot(u);
-	double c = u.dot(v);
-	double d = v.dot(t);
-	double e = v.dot(v);
+	float a = u.dot(t);
+	float b = u.dot(u);
+	float c = u.dot(v);
+	float d = v.dot(t);
+	float e = v.dot(v);
 
 	if (fabs(c * c - b * e) < 1e-9) return false;
 	if (fabs(c) < 1e-9) return false;
 
-	double d0 = (a * e - c * d) / (c * c - b * e);
-	double d1 = (a + b * d0) / c;
+	float d0 = (a * e - c * d) / (c * c - b * e);
+	float d1 = (a + b * d0) / c;
 
 	Vector3f xyz0 = t + d0 * u;
 	Vector3f xyz1 = d1 * v;
@@ -247,8 +247,72 @@ bool Triangulate(float& depth0, float& depth1, Point2f& x, Point2f& xprime, cons
 	Vector3f point3D = E.inverse() * midpoint;
 	depth0 = d0;
 	depth1 = d1;
-
 	// It's worth noting that we compute the final 3d point, and the distance in both cameras
 
 	return true;
+}
+
+/*
+	Given a projective matrix P, decompose into K and E = R * t_skew
+	
+	The calibration matrices that we get from this dataset come as full 3x4 projective matrices
+	in the form P = [A|-AC], where M is 3x3 and -AC is the translation.
+	
+	So we need to decompose this into K, R and t. Then the essential matrix is just R * t_skew
+	t is simple - get the last column, multiply by -M. Bam done.
+	
+	For K and R, we know that K is an upper triangular matrix, up to a scale factor, and R is orthogonal
+	by virtue of being a rotation matrix. Conveniently, RQ decomposition decomposes a matrix A into 
+	two components, one being upper-triangular - R - and the other being orthogonal. While every rotation
+	is orthogonal, it's also true that every orthogonal matrix is a rotation. 
+
+	Questions:
+	- is this how the translation is computed? What if it is just the final column?
+	- Do we need to scale K? Divide by final element?
+*/
+void DecomposeProjectiveMatrixIntoKAndE(const MatrixXf& P, Matrix3f& K, Matrix3f& E)
+{
+	Matrix3f A = P.block<3, 3>(0,0);
+	Vector3f t(P(0,3), P(1,3), P(2,3));
+	t = -1 * A * t;
+	
+	// Perform RQ decomposition - See Appendix 4 of Multiple View Geometry for details, section A4.1.1
+	// We left-multiply by three Givens rotations, the angle of each we need to derive. 
+
+	// First we zero A_32 by multiplying by the x Givens rotation
+	float fraction = 1 / sqrt(A(2,1)*A(2,1) + A(2,2)*A(2,2));
+	Matrix3f Qx;
+	Qx << 1,        0,               0,
+		  0, -A(2,2)*fraction, -A(2,1)*fraction,
+		  0,  A(2,1)*fraction, -A(2,2)*fraction;
+	A = A * Qx;
+
+	// Now zero A_31 using the y Givens rotation
+	fraction = 1 / sqrt(A(2, 0) * A(2, 0) + A(2, 2) * A(2, 2));
+	Matrix3f Qy;
+	Qy << A(2, 2) * fraction, 0, A(2, 0) * fraction,
+		          0,          1,         0,
+		 -A(2, 0) * fraction, 0, A(2, 2) * fraction;
+	A = A * Qy;
+
+	// Now zero A_21 using Qz
+	fraction = 1 / sqrt(A(1, 1) * A(1, 1) + A(1, 0) * A(1, 0));
+	Matrix3f Qz;
+	Qz << -A(1, 1) * fraction, -A(1, 0) * fraction, 0,
+		   A(1, 0) * fraction, -A(1, 1) * fraction, 0,
+		           0,                   0,          1;
+	A = A * Qz;
+
+	// We had A = some blend of K and R. Now we left-multiply to get
+	// AQxQyQz = some upper triangular matrix, which must be K up to a scale factor
+	// Therefore, (QxQyQz).transpose() = R, our rotation
+	K = A;
+	Matrix3f R = (Qx * Qy * Qz).transpose();
+
+	// To get E, we do R * t_skew
+	Matrix3f t_skew;
+	t_skew << 0,   -t[2],  t[1],
+		     t[2],   0,   -t[0],
+		    -t[1],  t[0],   0;
+	E = R * t_skew;
 }

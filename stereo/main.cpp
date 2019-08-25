@@ -34,7 +34,8 @@ struct ImageDescriptor
 {
 	std::vector<Feature> features;
 	std::string filename;
-	MatrixXf K;
+	Matrix3f K;
+	Matrix3f E;
 };
 
 struct StereoPair
@@ -93,6 +94,7 @@ struct StereoPair
 void init();
 void reshape(int width, int height);
 void display();
+void DrawPoints(const vector<Vector3f>& points);
 // Support function
 vector<string> get_all_files_names_within_folder(string folder)
 {
@@ -238,9 +240,11 @@ int main(int argc, char** argv)
 
 		cout << "Image descriptor created for image " << imageName << endl;
 		ImageDescriptor i;
-		i.K = calibrationMatrices[index];
 		i.filename = imageName;
 		i.features = goodFeatures;
+		// Need to decompose K into K and E = [R|t]. 
+		// This E is different to the E later on, which is between two cameras, not per-camera
+		DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[index], i.K, i.E);
 		images.push_back(i);
 
 		index++;
@@ -261,6 +265,7 @@ int main(int argc, char** argv)
 			StereoPair p;
 			p.F.setZero();
 			matrices[k][l] = p;
+			p.img1.filename = "";
 		}
 	}
 	for (int i = 0; i < s; ++i)
@@ -289,8 +294,11 @@ int main(int argc, char** argv)
 			matrices[i][j].img1 = images[i];
 			matrices[i][j].img2 = images[j];
 			matrices[i][j].F = fundamentalMatrix;
+			// These K's need to just be the camera matrices
 			// Now compute the Essential matrix
 			matrices[i][j].E = images[j].K.transpose() * fundamentalMatrix * images[i].K;
+
+			// TODO: DEBUG ESSENTIAL MATRIX TO CONFIRM MATHS
 
 #ifdef DEBUG_FUNDAMENTAL
 			// How do I verify that this is the fundamental matrix?
@@ -379,8 +387,44 @@ int main(int argc, char** argv)
 	//	find the chain of transforms to C0 - shortest path
 	// 
 	// 
+	// We've already stored immediate covisibility
+	// Now just need to go over that further, but just for C0. 
+	// So, a breadth-first. 
+	// For all covisible frames of C0, what is covisible that hasn't already been touched?
+	// Then push those on, repeat.
+	// Each time, store a rolling transform to C0
+	
 
 	// Render points
+
+	// Need to have some global structure that holds the points to be rendered
+	// Need to enable lighting and shadows
+
+	// For now, just render a small cube at the location of each point in C0
+	vector<Vector3f> pointsToDraw;
+	for (int i = 0; i < s; ++i)
+	{
+		StereoPair p = matrices[0][i];
+
+		// So every point should be in the frame of C0, and this will have
+		// all the points covisible to it
+		if (p.img1.filename.empty())
+			continue;
+
+		// So we definitely have points here. 
+
+		for (auto& f : images[i].features)
+		{
+			Vector3f point;
+			point[0] = f.p.x;
+			point[1] = f.p.y;
+			point[2] = 1;
+			point *= f.depth;
+			pointsToDraw.push_back(point);
+		}
+	}
+	DrawPoints(pointsToDraw);
+	glutMainLoopEvent();
 
 	return 0;
 }
@@ -545,7 +589,34 @@ void display()
 	glTranslatef(0.0f, 0.0f, -6.0f);  // Move into the screen to render the points
 
 	// Render the points as cubes
-	DrawCube(0.5f, 0.f, 1.f, 0.f);
+	//DrawCube(0.5f, 0.f, 1.f, 0.f);
+
+	// Render a pyramid consists of 4 triangles
+	glLoadIdentity();                  // Reset the model-view matrix
+
+	// Refresh the window
+	glutSwapBuffers();
+}
+
+void DrawPoints(const vector<Vector3f>& points)
+{
+	// Clear the window with the background color
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear color and depth buffers
+	glMatrixMode(GL_MODELVIEW);     // To operate on model-view matrix
+
+	glLoadIdentity();                 // Reset the model-view matrix
+	glTranslatef(0.0f, 0.0f, -6.0f);  // Move into the screen to render the points
+
+	// Render the points as cubes
+	for (auto& p : points)
+	{
+		DrawCube(0.5f, p[0], p[1], p[2]);
+	}
+
+
+	//DrawCube(0.5f, 0.f, 1.f, 0.f);
 
 	// Render a pyramid consists of 4 triangles
 	glLoadIdentity();                  // Reset the model-view matrix
