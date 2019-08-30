@@ -22,7 +22,7 @@ using namespace std;
 using namespace cv;
 using namespace Eigen;
 
-#define STEREO_OVERLAP_THRESHOLD 50
+#define STEREO_OVERLAP_THRESHOLD 20
 
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
 
@@ -67,6 +67,8 @@ struct StereoPair
 
 	Feature Detection, Scoring, Description, Matching
 		Using my existing FAST Feature detecter
+		FAST Features are really just not good for this. Need SIFT or something. Seriously tempted to just
+		use opencv's implementation of SIFT, and save to my own format. 
 
 	Derivation of the Fundamental Matrix 
 		This implies we don't even need the camera matrices. This will be done with the normalised
@@ -277,7 +279,7 @@ int main(int argc, char** argv)
 
 			if (matches.size() < STEREO_OVERLAP_THRESHOLD)
 			{
-				cout << "Not enough overlap between " << images[i].filename << " and " << images[j].filename << endl;
+				cout << matches.size() << " features - not enough overlap between " << images[i].filename << " and " << images[j].filename << endl;
 				continue;
 			}
 
@@ -298,8 +300,6 @@ int main(int argc, char** argv)
 			// Now compute the Essential matrix
 			matrices[i][j].E = images[j].K.transpose() * fundamentalMatrix * images[i].K;
 
-			// TODO: DEBUG ESSENTIAL MATRIX TO CONFIRM MATHS
-
 #ifdef DEBUG_FUNDAMENTAL
 			// How do I verify that this is the fundamental matrix?
 			// Surely it should transform matching feature points into each other?
@@ -317,13 +317,6 @@ int main(int argc, char** argv)
 				cout << result << endl << endl;
 			}
 #endif
-			// So what we need to do next is 
-			// 1) store the depth per feature wrt each camera
-			// 2) pick a camera, and get all points wrt it via some path of cameras and covisible points
-			// 3) render all points wrt one camera
-
-
-
 
 			// Now perform triangulation on each of those points to get the depth
 			// TODO: figure out structure here
@@ -346,6 +339,24 @@ int main(int argc, char** argv)
 			// and we follow this convention, where m.first is x', and m.second is x
 			for (auto& match : matches)
 			{
+				// TODO: triangulation isn't working. 
+				
+				// Debug: 
+				// display both images and within them the feature to be triangulated
+				namedWindow("Image first", WINDOW_AUTOSIZE);
+				namedWindow("Image second", WINDOW_AUTOSIZE);
+
+				// Draw the relevant feature within each window
+				Mat img_i = imread(imageFolder + "\\" + images[i].filename, IMREAD_GRAYSCALE);
+				circle(img_i, match.first.p, 2, (255, 255, 0), -1);
+				Mat img_j = imread(imageFolder + "\\" + images[j].filename, IMREAD_GRAYSCALE);
+				circle(img_j, match.second.p, 2, (255, 255, 0), -1);
+
+				// Display
+				imshow("Image first", img_i);
+				imshow("Image second", img_j);
+				waitKey(0);
+
 				Point2f xprime = match.first.p;
 				Point2f x = match.second.p;
 				float d0 = 0;

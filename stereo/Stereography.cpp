@@ -178,19 +178,19 @@ void LindstromOptimisation(Vector3f& x, Vector3f& xprime, const Matrix3f E)
 	S << 1, 0, 0,
 		0, 1, 0;
 
-	Matrix3f Etilde = S * E * S.transpose();
+	Matrix2f Etilde = S * E * S.transpose();
 
-	Vector3f n = S * E * xprime;
-	Vector3f nprime = S * E.transpose() * x;
-	RowVector3f nT = n.transpose();
-	RowVector3f nprimeT = nprime.transpose();
+	Vector2f n = S * E * xprime;
+	Vector2f nprime = S * E.transpose() * x;
+	RowVector2f nT = n.transpose();
+	RowVector2f nprimeT = nprime.transpose();
 	float a = nT * Etilde * nprime;
 	float b = 0.5f * (nT*n + nprimeT*nprime)(0);
 	float c = x.transpose() * E * xprime;
 	float d = sqrt(b*b - a*c);
 	float lambda = c / (b + d);
-	Vector3f x_delta = lambda * n;
-	Vector3f xprime_delta = lambda * nprime;
+	Vector2f x_delta = lambda * n;
+	Vector2f xprime_delta = lambda * nprime;
 	n = n - Etilde * xprime_delta;
 	nT = n.transpose();
 	nprime = nprime - Etilde * x_delta;
@@ -307,6 +307,7 @@ void DecomposeProjectiveMatrixIntoKAndE(const MatrixXf& P, Matrix3f& K, Matrix3f
 	// AQxQyQz = some upper triangular matrix, which must be K up to a scale factor
 	// Therefore, (QxQyQz).transpose() = R, our rotation
 	K = A;
+	K /= K(2, 2);
 	Matrix3f R = (Qx * Qy * Qz).transpose();
 
 	// To get E, we do R * t_skew
