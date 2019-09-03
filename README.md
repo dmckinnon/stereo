@@ -49,8 +49,13 @@ In [my other tutorial](https://github.com/dmckinnon/stitch) I used FAST features
 
 Consider this: the images I'm using here are things like faces. Faces have a lot of smooth curves, and not many very sharp changes. Put them under a lot of soft lighting, and you lose many sharp corners. FAST features are few and far between here. So what shall we use, then?
 
-https://milania.de/blog/Introduction_to_the_Hessian_feature_detector_for_finding_blobs_in_an_image
-https://en.wikipedia.org/wiki/Difference_of_Gaussians
+The [Determinant of the Hessian](https://milania.de/blog/Introduction_to_the_Hessian_feature_detector_for_finding_blobs_in_an_image) is a good place to start. This detector is designed to find feature 'blobs', and not corners. As the link says, 
+"So, what exactly is a blob in an image? It is a homogeneous area with roughly equal intensity values compared to the surrounding". What does this mean? An area of pixels all roughly the same shade, surrounded by pixels clearly not the same shade. Consider, say, a nose - one sees a dark blob up the nostril. All pixels would be roughly the same amount of dark, surrounded by lighter skin pixels. But a blob need not be a circle - rather, any region of relatively uniform intensity. 
+
+A brief explanation for what the Determinant of Hessian detector is (since that article goes into the deeper details): the Hessian matrix is a matrix of second-order derivatives around a point (*x*, *y*). When you are looking at second derivatives in the 2 dimensional case, you're looking at the curvature of the function. As that, with this - we are considering the local curvative of a 3 dimensional function (a function in two variables). We need the Hessian matrix *H*, a directional vector *v* for the direction we care about, and a location (*x*, *y*), and compute *H* at this point in direction of *v* by *v*^T * *H* * *v*. The eigenvectors of this then describe the vectors of highest and lowest curvature. But high curvature describes edges, in an image! If both eigenvalues are large, then we have strong curvature in every direction, and likely have an interest patch. Recalling that the determinant of a matrix equates to the product of its eigenvalues; hence, if the determinant of the hessian matrix for a patch is large, both eigenvalues are large (probably) and we have strong curvature. Label this point a feature!
+
+The full Determinant of Hessian detector is more detailed and nuanced than this; this is just a high level overview. 
+
 
 # Feature Description and Matching
 I've written about [feature description and matching elsewhere](https://github.com/dmckinnon/stitch#feature-description), but I'll go over it again. 
