@@ -7,7 +7,7 @@
 
 // Parameters to tune
 #define FAST_THRESHOLD 30
-#define ST_THRESH 30000.f
+#define ST_THRESH 10000.f
 #define HARRIS_THRESH 10000.f
 #define NMS_WINDOW 2
 #define MAX_NUM_FEATURES 100
@@ -26,6 +26,11 @@
 #define DESC_SUB_WINDOW 4
 #define ILLUMINANCE_BOUND 0.2f
 #define NN_RATIO 0.8
+
+// DOH constants
+#define DOH_WINDOW 5
+#define SCALE_SPACE_ITERATIONS 10
+#define DOH_THRESHOLD 700.0
 
 
 #define PI 3.14159f
@@ -72,6 +77,10 @@ bool FeatureCompare(Feature a, Feature b);
 	Feature Detection functions
 */
 bool FindFASTFeatures(cv::Mat img, std::vector<Feature>& features);
+
+bool FindDoHFeatures(cv::Mat input, std::vector<Feature>& features);
+
+std::vector<Feature> ClusterFeatures(std::vector<Feature>& features, const int windowSize);
 
 std::vector<Feature> FindHarrisCorners(const cv::Mat& img, int nmsWindowSize);
 

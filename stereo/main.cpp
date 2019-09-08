@@ -2,6 +2,8 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
+#include "opencv2/features2d.hpp"
+#include "opencv2/core.hpp"
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -17,6 +19,7 @@
 #include <stdlib.h>
 #include <GL/glew.h> // This must appear before freeglut.h
 #include <GL/freeglut.h>
+#include <omp.h>
 
 using namespace std;
 using namespace cv;
@@ -25,6 +28,8 @@ using namespace Eigen;
 #define STEREO_OVERLAP_THRESHOLD 20
 
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
+
+#define DEBUG
 
 GLuint buffer = 0;
 GLuint vPos;
@@ -84,6 +89,8 @@ struct StereoPair
 	- 
 
 	TODO:
+	- See what sort of Features we get using SIFT and SURF
+
 	- how to pull in images
 	- do we need camera matrices?
 	- TEST NORMALISATION
@@ -183,7 +190,7 @@ int main(int argc, char** argv)
 							i += 1;
 						}
 						calibrationMatrices.push_back(K);
-						cout << K << endl;
+						//cout << K << endl;
 					}
 				}
 			}
@@ -204,9 +211,10 @@ int main(int argc, char** argv)
 
 	// Loop over the images to pull out features 
 	vector<ImageDescriptor> images;
-	int index = 0;
-	for (const auto& imageName : imageFiles)
+    //#pragma omp parallel for
+	for (int idx = 0; idx < imageFiles.size(); idx++)
 	{
+		const auto& imageName = imageFiles[idx];
 		string imagePath = imageFolder + "\\" + imageName;
 		Mat img = imread(imagePath, IMREAD_GRAYSCALE);
 
@@ -218,23 +226,29 @@ int main(int argc, char** argv)
 			resize(img, img, Size(size, size), 0, 0, CV_INTER_LINEAR);
 		}
 
-		// Find FAST features
+		// Find DOH features
 		vector<Feature> features;
-		if (!FindFASTFeatures(img, features))
+		if (!FindDoHFeatures(img, features))
 		{
-			cout << "Failed to find features in image " << imageName << endl;
+			cout << "Failed to find DoH features in image " << imageName << endl;
 			return 0;
 		}
-		// Score features with Shi-Tomasi score
-		std::vector<Feature> goodFeatures = ScoreAndClusterFeatures(img, features);
-		if (goodFeatures.empty())
+
+#ifdef DEBUG
+		Mat img_i = imread(imagePath, IMREAD_GRAYSCALE);
+		for (auto& f : features)
 		{
-			cout << "Failed to score and cluster features in image " << imageName << endl;
-			return 0;
+			circle(img_i, f.p, 3, (255, 255, 0), -1);
 		}
+		
+		// Display
+		imshow("Image - best features", img_i);
+		waitKey(0);
+#endif
+
 		// Create descriptors for each feature in the image
 		std::vector<FeatureDescriptor> descriptors;
-		if (!CreateSIFTDescriptors(img, goodFeatures, descriptors))
+		if (!CreateSIFTDescriptors(img, features, descriptors))
 		{
 			cout << "Failed to create feature descriptors for image " << imageName << endl;
 			return 0;
@@ -243,13 +257,12 @@ int main(int argc, char** argv)
 		cout << "Image descriptor created for image " << imageName << endl;
 		ImageDescriptor i;
 		i.filename = imageName;
-		i.features = goodFeatures;
+		i.features = features;
 		// Need to decompose K into K and E = [R|t]. 
 		// This E is different to the E later on, which is between two cameras, not per-camera
-		DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[index], i.K, i.E);
+		DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[idx], i.K, i.E);
+        //#pragma omp critical
 		images.push_back(i);
-
-		index++;
 	}
 
 	// Run over each possible pair of images and count how many features they have in common. If more

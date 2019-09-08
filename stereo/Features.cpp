@@ -1,10 +1,74 @@
 #include "Features.h"
+#define _USE_MATH_DEFINES
+#include <math.h>
 #include <iostream>
 #include <algorithm>
 
 using namespace cv;
 using namespace std;
 
+
+/*
+	Create a Gaussian kernel within the given matrix
+
+	TODO: use Eigen
+*/
+void CreateGaussianKernel(Mat& img, float sigma)
+{
+	for (int y = 0; y < img.rows; ++y)
+	{
+		for (int x = 0; x < img.cols; ++x)
+		{
+			float x_u = x - img.cols / 2;
+			float y_u = y - img.rows / 2;
+			float g = (1.f / (2.f * sigma * sigma * (float)M_PI)) * exp(-1*(x_u*x_u + y_u*y_u)/(2*sigma*sigma));
+			img.at<float>(x, y) = g;
+		}
+	}
+}
+
+
+/*
+	Cluster features.
+
+	Given a vector of features, perform non-maximal suppression over a given
+	window size to compact clusters into single features.
+	For each feature, within a window around it, if it is the strongest feature then
+	remove all others; otherwise move on, it will be removed as part of the other feature's window
+*/
+vector<Feature> ClusterFeatures(vector<Feature>& features, const int windowSize)
+{
+	vector<Feature> temp;
+	for (unsigned int n = 0; n < features.size(); ++n)
+	{
+		auto& f = features[n];
+		bool thisFeatureIsTheMaximum = true;
+		for (int i = 0; i < features.size(); ++i)
+		{
+			if (i == n)
+				continue;
+
+			auto& f2 = features[i];
+			int xmargin = abs(f.p.x - f2.p.x);
+			int ymargin = abs(f.p.y - f2.p.y);
+			if (xmargin <= windowSize && ymargin <= windowSize)
+			{
+				if (f.score < f2.score)
+				{
+					thisFeatureIsTheMaximum = false;
+					break;
+				}
+			}
+		}
+
+		if (thisFeatureIsTheMaximum)
+		{
+			temp.push_back(f);
+		}
+	}
+
+	return temp;
+}
 
 /*
 	Harris corners
@@ -130,13 +194,140 @@ vector<Feature> FindHarrisCorners(const Mat& img, int nmsWindowSize)
 	return temp;
 }
 
+/*
+	DoH Features
+
+	Given an image, return a vector of all the Determinant of Hessian features in the image. 
+	These are directly scored by the determinant. 
+	This is computed over a scale space - each scale up, we 'downsample' by Gaussian blur. 
+	We compute the Hessian matrix over each window, and get the determinant. If the determinant times
+	the fourth power of the scale (1, 2, 3, etc) is above a threshold, then this is a feature. 
+
+	Note that descriptors are computed NOT in the scale space
+*/
+bool FindDoHFeatures(Mat input, vector<Feature>& features)
+{
+	// Get gaussian kernel for weighting the gradients within the window
+	Mat gaussKernel = Mat(DOH_WINDOW, DOH_WINDOW, CV_32F, 1);
+	CreateGaussianKernel(gaussKernel, 1);
+
+	// We run this over an image that uses normalised pixels - that is, values between 0 and 1, representing 0-255
+	Mat img = Mat(input.rows, input.cols, CV_32F, 1);
+	for (int y = 0; y < img.rows; ++y)
+	{
+		for (int x = 0; x < img.cols; ++x)
+		{
+			img.at<float>(y, x) = (float)input.at<uchar>(y, x) / 255.f;
+		}
+	}
+
+	// Iterate over scale space
+	float maxFeatureScore = 0;
+	float avgFeatureScore = 0;
+	for (int k = 1; k < SCALE_SPACE_ITERATIONS; ++k)
+	{
+		// blur the image
+		GaussianBlur(img, img, Size(DOH_WINDOW, DOH_WINDOW), 1, 1, BORDER_DEFAULT);
+
+		// Only take even iterations
+		if (k % 2 == 0)
+		{
+			continue;
+		}
+
+		// Compute image gradient
+		Mat sobel = img.clone();
+		Mat grad_x, grad_y;
+		int scale = 1;
+		int delta = 0;
+		int ddepth = CV_8U;
+		Sobel(sobel, grad_x, ddepth, 1, 0, DOH_WINDOW, scale, delta, BORDER_DEFAULT);
+		Sobel(sobel, grad_y, ddepth, 0, 1, DOH_WINDOW, scale, delta, BORDER_DEFAULT);
+		// We have our x and y gradients
+		// Now with our window size, go over the image
+
+		
+
+		int width = img.cols;
+		int height = img.rows;
+		int numFeatures = features.size();
+		std::vector<Feature> goodFeatures;
+		float avgEigen = 0.f;
+
+		// Loop over all pixels in the image, and check for Harris corners
+		// Except this is hideously expensive, so I'm going to skip every second pixel
+		for (unsigned int y = DOH_WINDOW / 2 + 1; y < img.rows - DOH_WINDOW / 2; y += 2)
+		{
+			for (unsigned int x = DOH_WINDOW / 2 + 1; x < img.cols - DOH_WINDOW / 2; x += 2)
+			{
+				int winSize = DOH_WINDOW / 2;
+				Mat H = Mat::zeros(2, 2, CV_32F);
+				// Go through the window around the point
+				// Accumulate M weighted by the kernel
+				// This is the gradient at the point that we will use. 
+				// We use an accumulated gradient rather than a pointwise gradient since we are 
+				// approximating the gradient of a "smooth" function that we only know at certain points.
+				for (int n = -(DOH_WINDOW / 2); n <= DOH_WINDOW / 2; ++n)
+				{
+					for (int m = -(DOH_WINDOW / 2); m <= (DOH_WINDOW / 2); ++m)
+					{
+						int i = n + y;
+						int j = m + x;
+						float w = gaussKernel.at<float>(n + (DOH_WINDOW / 2), m + (DOH_WINDOW / 2));
+						H.at<float>(0, 0) += w * (float)(grad_x.at<uchar>(i, j) * grad_x.at<uchar>(i, j));
+						H.at<float>(0, 1) += w * (float)(grad_x.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
+						H.at<float>(1, 0) += w * (float)(grad_x.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
+						H.at<float>(1, 1) += w * (float)(grad_y.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
+					}
+				}
+
+				// Scale Hessian to use normalised gradient values
+
+				// Compute the DoH score
+				// This is just the determinant of the hessian, times the scale factor to the fourth power
+				float detM = H.at<float>(0, 0) * H.at<float>(1, 1) - H.at<float>(0, 1) * H.at<float>(1, 0);
+				//float traceM = H.at<float>(0, 0) + H.at<float>(1, 1);
+				float score = detM*k*k*k*k;
+
+				//std::cout << "score: " << score << std::endl;
+
+				// Only keep point that have a score above our threshold
+				if (score > DOH_THRESHOLD)
+				{
+					Feature f;
+					f.p.x = x;
+					f.p.y = y;
+					f.score = score;
+					features.push_back(f);
+
+					avgFeatureScore += score;
+					if (score > maxFeatureScore)
+					{
+						maxFeatureScore = score;
+					}
+				}
+			}
+		}
+	}
+
+	avgFeatureScore /= features.size();
+
+	std::cout << "Averafge ferature score: " << avgFeatureScore << std::endl;
+
+	auto temp = ClusterFeatures(features, 20);
+	features.clear();
+	features.insert(features.end(), temp.begin(), temp.end());
+	
+
+	return true;
+}
 
 /*
 	FAST features
 
 	Given an image, return a vector of all FAST features in the image.
 	In 16 defined points surrounding a pixel, visualised below, we aim to
-	find a sequence of N=12 or more long where the points are all above or all belowgit p
+	find a sequence of N=12 or more long where the points are all above or all below
 	the centre point value plus or minus a given threshold.
 	Assumed: img is grayscale
 		  16  1  2
@@ -440,8 +631,7 @@ std::vector<Feature> ScoreAndClusterFeatures(Mat img, vector<Feature>& features)
 
 	// Get gaussian kernel for weighting the gradients within the window
 	Mat gaussKernel = Mat(ST_WINDOW, ST_WINDOW, CV_32F, 1);
-	for (int i = 0; i < ST_WINDOW; ++i) for (int j = 0; j < ST_WINDOW; ++j) gaussKernel.at<float>(i, j) = 1;
-	GaussianBlur(gaussKernel, gaussKernel, Size(ST_WINDOW, ST_WINDOW), 1, 1, BORDER_DEFAULT);
+	CreateGaussianKernel(gaussKernel, 1);
 
 	int width = img.cols;
 	int height = img.rows;
