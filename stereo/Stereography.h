@@ -8,6 +8,14 @@
 
 #define BAD_DEPTH -1
 
+struct StereoPair
+{
+	ImageDescriptor img1;
+	ImageDescriptor img2;
+	Eigen::Matrix3f F;
+	Eigen::Matrix3f E;
+};
+
 /*
 	Stereography functions
 */

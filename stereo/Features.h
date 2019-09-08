@@ -2,8 +2,12 @@
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
+#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <vector>
 #include <utility>
+#include <fstream>
+#include <iostream>
 
 // Parameters to tune
 #define FAST_THRESHOLD 30
@@ -52,6 +56,84 @@ struct Feature
 	FeatureDescriptor desc;
 	float distFromBestMatch;
 	float depth;
+
+	friend std::ostream& operator << (std::ostream& os, const Feature& f)
+	{
+		os << f.scale << f.p << f.score << f.angle << f.distFromBestMatch << f.depth;
+		for (int i = 0; i < DESC_LENGTH; ++i)
+		{
+			os << f.desc.vec[i];
+		}
+		return os;
+	}
+	friend std::istream& operator >> (std::istream& is, Feature& f)
+	{
+		float x = 0;
+		float y = 0;
+		is >> f.scale >> x >> y >> f.score >> f.angle >> f.distFromBestMatch >> f.depth;
+		f.p.x = x;
+		f.p.y = y;
+		for (int i = 0; i < DESC_LENGTH; ++i)
+		{
+			is >> f.desc.vec[i];
+		}
+		return is;
+	}
+};
+
+struct ImageDescriptor
+{
+	std::vector<Feature> features;
+	std::string filename;
+	Eigen::Matrix3f K;
+	Eigen::Matrix3f E;
+
+	friend std::ostream& operator << (std::ostream& os, const ImageDescriptor& i)
+	{
+		os << i.filename << std::endl;
+		for (int k = 0; k < 3; ++k)
+		{
+			for (int j = 0; j < 3; ++j)
+				os << i.K(k, j) << " ";
+			os << std::endl;
+		}
+		for (int k = 0; k < 3; ++k)
+		{
+			for (int j = 0; j < 3; ++j)
+				os << i.E(k, j) << " ";
+			os << std::endl;
+		}
+		os << i.features.size() << std::endl;
+		for (auto& f : i.features)
+		{
+			os << f << std::endl;
+		}
+		return os;
+	}
+	friend std::istream& operator >> (std::istream& is, ImageDescriptor& i)
+	{
+		size_t numFeatures = 0;
+		is >> i.filename;
+		
+		for (int k = 0; k < 3; ++k)
+		{
+			for (int j = 0; j < 3; ++j)
+				is >> i.K(k, j);
+		}
+		for (int k = 0; k < 3; ++k)
+		{
+			for (int j = 0; j < 3; ++j)
+				is >> i.E(k, j);
+		}
+		is >> numFeatures;
+		for (size_t idx = 0; idx < numFeatures; ++idx)
+		{
+			Feature f;
+			is >> f;
+			i.features.push_back(f);
+		}
+		return is;
+	}
 };
 
 /*
@@ -89,6 +171,12 @@ std::vector<Feature> ScoreAndClusterFeatures(cv::Mat img, std::vector<Feature>& 
 bool CreateSIFTDescriptors(cv::Mat img, std::vector<Feature>& features, std::vector<FeatureDescriptor>& descriptors);
 
 std::vector<std::pair<Feature, Feature> > MatchDescriptors(std::vector<Feature> list1, std::vector<Feature> list2);
+
+void GetImageDescriptorsForFile(const std::vector<std::string>& filenames, const std::string& folder, std::vector<ImageDescriptor>& images);
+
+bool SaveImageDescriptorsToFile(const std::string& filename, std::vector<ImageDescriptor>& images);
+
+bool ReadDescriptorsFromFile(const std::string& filename, std::vector<ImageDescriptor>& images);
 
 /*
 	Feature Detection Unit Test functions

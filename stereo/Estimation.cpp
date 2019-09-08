@@ -55,10 +55,10 @@ pair<Matrix3f, Matrix3f> ConvertPoints(const vector<pair<Feature, Feature> >& ma
 {
 	// For each point in first and second, collect the mean
 	// and compute std deviation
-	unsigned int size = matches.size();
+	size_t size = matches.size();
 	Point2f firstAvg(0.f, 0.f);
 	Point2f secondAvg(0.f, 0.f);
-	for (unsigned int i = 0; i < size; ++i)
+	for (size_t i = 0; i < size; ++i)
 	{
 		firstAvg += matches[i].first.p;
 		secondAvg += matches[i].second.p;
@@ -99,7 +99,7 @@ pair<Matrix3f, Matrix3f> ConvertPoints(const vector<pair<Feature, Feature> >& ma
 bool FindHomography(Matrix3f& homography, vector<pair<Feature,Feature> > matches)
 {
 	// Initialise RNG
-	srand(time(NULL));
+	srand((unsigned int)time(NULL));
 
 	// Get normalisation matrices, and normalise all points in the matches
 	// This distributes the points across a normal distribution, mean 0 std dev 1. 
@@ -127,21 +127,21 @@ bool FindHomography(Matrix3f& homography, vector<pair<Feature,Feature> > matches
 	// Create a homography, perform the tests, refine etc, see how it is
 	// If it meets the bar for quality, break. 
 	// If not, keep trying
-	int maxInliers = 0;
+	size_t maxInliers = 0;
 	Matrix3f bestH;
-	int numMatches = matches.size();
+	size_t numMatches = matches.size();
 	vector<pair<Feature, Feature> > inlierSet;
 	for (int k = 0; k < MAX_RANSAC_ITERATIONS; ++k)
 	{
 		// Pick four random matches by generating four random indices
 		// and ensuring they are not equal
 		int i1, i2, i3, i4;
-		GetRandomFourIndices(i1, i2, i3, i4, numMatches, matches);
+		GetRandomFourIndices(i1, i2, i3, i4, (int)numMatches, matches);
 		
 		// Get the points for those features and generate the homography
 		// Since we match from left to right, and the homography goes from right
 		// to left, the first in the pair is the feature on the right, and the second on the left
-		vector<pair<Point, Point>> points;
+		vector<pair<Point2f, Point2f>> points;
 		Matrix3f H;
 		points.push_back(make_pair(matches[i1].second.p, matches[i1].first.p));
 		points.push_back(make_pair(matches[i2].second.p, matches[i2].first.p));
@@ -224,7 +224,7 @@ bool FindHomography(Matrix3f& homography, vector<pair<Feature,Feature> > matches
 	Since V's columns are eigenvectors of AT * A
 	But whatever
 */
-bool GetHomographyFromMatches(const vector<pair<Point, Point>> points, Matrix3f& H)
+bool GetHomographyFromMatches(const vector<pair<Point2f, Point2f>> points, Matrix3f& H)
 {
 	// Construct A
 	Matrix<float, 8, 9> A;

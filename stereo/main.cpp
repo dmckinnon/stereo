@@ -29,27 +29,11 @@ using namespace Eigen;
 
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
 
-#define DEBUG
+//#define DEBUG
 
 GLuint buffer = 0;
 GLuint vPos;
 GLuint program;
-
-struct ImageDescriptor
-{
-	std::vector<Feature> features;
-	std::string filename;
-	Matrix3f K;
-	Matrix3f E;
-};
-
-struct StereoPair
-{
-	ImageDescriptor img1;
-	ImageDescriptor img2;
-	Matrix3f F;
-	Matrix3f E;
-};
 
 /*
 	This is an exercise in stereo depth-maps and reconstruction (stretch goal)
@@ -123,6 +107,10 @@ vector<string> get_all_files_names_within_folder(string folder)
 	}
 	return names;
 }
+inline bool does_file_exist(const std::string& name) {
+	ifstream f(name.c_str());
+	return f.good();
+}
 // Main
 int main(int argc, char** argv)
 {
@@ -153,7 +141,7 @@ int main(int argc, char** argv)
 	if (argc < 2 || strcmp(argv[1], "-h") == 0)
 	{
 		cout << "Usage:" << endl;
-		cout << "stereo.exe <Folder to images> <Folder to calibration matrices>" << endl;
+		cout << "stereo.exe <Folder to images> <Folder to calibration matrices> [Folder to save/load features]" << endl;
 		exit(1);
 	}
 	string imageFolder = argv[1];
@@ -207,11 +195,28 @@ int main(int argc, char** argv)
 	// Need a structure to hold extracted features, name
 	// Then a structure to hold two of these, and a fundamental matrix
 
-
-
-	// Loop over the images to pull out features 
+	// If we have a pre-existing feature file, use that. 
+	// Otherwise, loop over the images to get the descriptors
 	vector<ImageDescriptor> images;
-    //#pragma omp parallel for
+	bool featureFileGiven = false;
+	bool featuresRead = false;
+	if (argc >= 4)
+	{
+		featureFileGiven = true;
+		// If the feature file exists, read the image descriptors from it
+		if (does_file_exist(argv[4]))
+		{
+			if (ReadDescriptorsFromFile(argv[4], images))
+			{
+				featuresRead = true;
+			}
+			else
+			{
+				std::cout << "Reading descriptors from file failed" << endl;
+			}
+		}
+	}
+	// Loop over the images to pull out features 
 	for (int idx = 0; idx < imageFiles.size(); idx++)
 	{
 		const auto& imageName = imageFiles[idx];
@@ -220,11 +225,11 @@ int main(int argc, char** argv)
 
 		// Scale the image to be square along the smaller axis
 		// ONLY IF we have no calibration matrices
-		if (calibrationMatrices.empty())
-		{
-			int size = min(img.cols, img.rows);
-			resize(img, img, Size(size, size), 0, 0, CV_INTER_LINEAR);
-		}
+		//if (calibrationMatrices.empty())
+		//{
+		//	int size = min(img.cols, img.rows);
+		//	resize(img, img, Size(size, size), 0, 0, CV_INTER_LINEAR);
+		//}
 
 		// Find DOH features
 		vector<Feature> features;
@@ -233,6 +238,7 @@ int main(int argc, char** argv)
 			cout << "Failed to find DoH features in image " << imageName << endl;
 			return 0;
 		}
+		std::cout << features.size() << " features found in image " << imageName << std::endl;
 
 #ifdef DEBUG
 		Mat img_i = imread(imagePath, IMREAD_GRAYSCALE);
@@ -263,6 +269,19 @@ int main(int argc, char** argv)
 		DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[idx], i.K, i.E);
         //#pragma omp critical
 		images.push_back(i);
+	}
+
+	// If opted, check for a features file
+	if (featureFileGiven)
+	{
+		// If the features file does not exist, save the features out to it
+		if (!does_file_exist(argv[4]))
+		{
+			if (!SaveImageDescriptorsToFile(argv[4], images))
+			{
+				std::cout << "Saving descriptors to file failed" << std::endl;
+			}
+		}
 	}
 
 	// Run over each possible pair of images and count how many features they have in common. If more

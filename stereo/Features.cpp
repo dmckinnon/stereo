@@ -2,6 +2,8 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <iostream>
+#include <string>
+#include <sstream>
 #include <algorithm>
 
 using namespace cv;
@@ -19,8 +21,8 @@ void CreateGaussianKernel(Mat& img, float sigma)
 	{
 		for (int x = 0; x < img.cols; ++x)
 		{
-			float x_u = x - img.cols / 2;
-			float y_u = y - img.rows / 2;
+			float x_u = x - img.cols / 2.f;
+			float y_u = y - img.rows / 2.f;
 			float g = (1.f / (2.f * sigma * sigma * (float)M_PI)) * exp(-1*(x_u*x_u + y_u*y_u)/(2*sigma*sigma));
 			img.at<float>(x, y) = g;
 		}
@@ -49,8 +51,8 @@ vector<Feature> ClusterFeatures(vector<Feature>& features, const int windowSize)
 				continue;
 
 			auto& f2 = features[i];
-			int xmargin = abs(f.p.x - f2.p.x);
-			int ymargin = abs(f.p.y - f2.p.y);
+			int xmargin = (int)abs(f.p.x - f2.p.x);
+			int ymargin = (int)abs(f.p.y - f2.p.y);
 			if (xmargin <= windowSize && ymargin <= windowSize)
 			{
 				if (f.score < f2.score)
@@ -110,15 +112,14 @@ vector<Feature> FindHarrisCorners(const Mat& img, int nmsWindowSize)
 
 	int width = img.cols;
 	int height = img.rows;
-	int numFeatures = features.size();
 	std::vector<Feature> goodFeatures;
 	float avgEigen = 0.f;
 	
 	// Loop over all pixels in the image, and check for Harris corners
 	// Except this is hideously expensive, so I'm going to skip every second pixel
-	for (unsigned int y = HARRIS_WINDOW / 2 + 1; y < img.rows -  HARRIS_WINDOW / 2; y += 2)
+	for (int y = HARRIS_WINDOW / 2 + 1; y < img.rows -  HARRIS_WINDOW / 2; y += 2)
 	{
-		for (unsigned int x = HARRIS_WINDOW / 2 + 1; x < img.cols - HARRIS_WINDOW / 2; x += 2)
+		for (int x = HARRIS_WINDOW / 2 + 1; x < img.cols - HARRIS_WINDOW / 2; x += 2)
 		{
 			int winSize = HARRIS_WINDOW / 2;
 			Mat M = Mat::zeros(2, 2, CV_32F);
@@ -151,8 +152,8 @@ vector<Feature> FindHarrisCorners(const Mat& img, int nmsWindowSize)
 			if (score > HARRIS_THRESH)
 			{
 				Feature f;
-				f.p.x = x;
-				f.p.y = y;
+				f.p.x = (float)x;
+				f.p.y = (float)y;
 				f.score = score;
 				//f.saddle = detM < 0; // if  < 0, one eigenvalue is positive, the other negative
 				features.push_back(f);
@@ -173,8 +174,8 @@ vector<Feature> FindHarrisCorners(const Mat& img, int nmsWindowSize)
 				continue;
 
 			auto& f2 = features[i];
-			int xmargin = abs(f.p.x - f2.p.x);
-			int ymargin = abs(f.p.y - f2.p.y);
+			int xmargin = (int)abs(f.p.x - f2.p.x);
+			int ymargin = (int)abs(f.p.y - f2.p.y);
 			if (xmargin <= nmsWindowSize && ymargin <= nmsWindowSize)
 			{
 				if (f.score < f2.score)
@@ -246,19 +247,16 @@ bool FindDoHFeatures(Mat input, vector<Feature>& features)
 		// We have our x and y gradients
 		// Now with our window size, go over the image
 
-		
-
 		int width = img.cols;
 		int height = img.rows;
-		int numFeatures = features.size();
 		std::vector<Feature> goodFeatures;
 		float avgEigen = 0.f;
 
 		// Loop over all pixels in the image, and check for Harris corners
 		// Except this is hideously expensive, so I'm going to skip every second pixel
-		for (unsigned int y = DOH_WINDOW / 2 + 1; y < img.rows - DOH_WINDOW / 2; y += 2)
+		for (int y = DOH_WINDOW / 2 + 1; y < img.rows - DOH_WINDOW / 2; y += 2)
 		{
-			for (unsigned int x = DOH_WINDOW / 2 + 1; x < img.cols - DOH_WINDOW / 2; x += 2)
+			for (int x = DOH_WINDOW / 2 + 1; x < img.cols - DOH_WINDOW / 2; x += 2)
 			{
 				int winSize = DOH_WINDOW / 2;
 				Mat H = Mat::zeros(2, 2, CV_32F);
@@ -295,8 +293,8 @@ bool FindDoHFeatures(Mat input, vector<Feature>& features)
 				if (score > DOH_THRESHOLD)
 				{
 					Feature f;
-					f.p.x = x;
-					f.p.y = y;
+					f.p.x = (float)x;
+					f.p.y = (float)y;
 					f.score = score;
 					features.push_back(f);
 
@@ -311,9 +309,7 @@ bool FindDoHFeatures(Mat input, vector<Feature>& features)
 	}
 
 	avgFeatureScore /= features.size();
-
-	std::cout << "Averafge ferature score: " << avgFeatureScore << std::endl;
-
+	
 	auto temp = ClusterFeatures(features, 20);
 	features.clear();
 	features.insert(features.end(), temp.begin(), temp.end());
@@ -402,8 +398,8 @@ bool FindFASTFeatures(Mat img, vector<Feature>& features)
 
 				// It worked! We have a feature. Record this point in our vector
 				Feature feature;
-				feature.p.x = w;
-				feature.p.y = h;
+				feature.p.x = (float)w;
+				feature.p.y = (float)h;
 				features.push_back(feature);
 			}
 		}
@@ -999,4 +995,105 @@ std::vector<std::pair<Feature, Feature> > MatchDescriptors(std::vector<Feature> 
 	}
 
 	return matches;
+}
+
+/*
+	Given a series of image file names, create image descriptors for each file
+*/
+// Helper - given an image file name, create an image descriptor for that file
+void CreateDescriptorForImage(const std::string& filename, const std::string& folder, ImageDescriptor& imgDesc)
+{
+	string imagePath = folder + "\\" + filename;
+	Mat img = imread(imagePath, IMREAD_GRAYSCALE);
+
+	// Scale the image to be square along the smaller axis
+	// ONLY IF we have no calibration matrices
+	//if (calibrationMatrices.empty())
+	//{
+	//	int size = min(img.cols, img.rows);
+	//	resize(img, img, Size(size, size), 0, 0, CV_INTER_LINEAR);
+	//}
+
+	// Find DOH features
+	vector<Feature> features;
+	if (!FindDoHFeatures(img, features))
+	{
+		cout << "Failed to find DoH features in image " << filename << endl;
+		return;
+	}
+	std::cout << features.size() << " features found in image " << filename << std::endl;
+
+#ifdef DEBUG
+	Mat img_i = imread(imagePath, IMREAD_GRAYSCALE);
+	for (auto& f : features)
+	{
+		circle(img_i, f.p, 3, (255, 255, 0), -1);
+	}
+
+	// Display
+	imshow("Image - best features", img_i);
+	waitKey(0);
+#endif
+
+	// Create descriptors for each feature in the image
+	std::vector<FeatureDescriptor> descriptors;
+	if (!CreateSIFTDescriptors(img, features, descriptors))
+	{
+		cout << "Failed to create feature descriptors for image " << filename << endl;
+		return;
+	}
+
+	cout << "Image descriptor created for image " << filename << endl;
+	ImageDescriptor i;
+	i.filename = filename;
+	i.features = features;
+	// Need to decompose K into K and E = [R|t]. 
+	// This E is different to the E later on, which is between two cameras, not per-camera
+	//DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[idx], i.K, i.E);
+}
+// Actual function
+void GetImageDescriptorsForFile(const std::vector<std::string>& filenames, const std::string& folder, std::vector<ImageDescriptor>& images)
+{
+#pragma omp parallel
+	{
+		// Will this create a separate imageDesciptor per thread?
+		ImageDescriptor i;
+#pragma omp parallel for
+		for (int idx = 0; idx < filenames.size(); idx++)
+		{
+			CreateDescriptorForImage(filenames[idx], folder, i);
+		}
+
+#pragma omp critical
+		images.push_back(i);
+	}
+}
+
+/*
+	Given a list of image descriptors, serialise these to a .dat file
+*/
+bool SaveImageDescriptorsToFile(const std::string& filename, vector<ImageDescriptor>& images)
+{
+
+
+	return true;
+}
+
+/*
+	Given a file of image descriptors, deserialise into a vector of descriptors
+*/
+bool ReadDescriptorsFromFile(const std::string& filename, vector<ImageDescriptor>& images)
+{
+	ifstream descFile;
+	descFile.open(filename);
+	if (descFile.is_open())
+	{
+
+	}
+	else
+	{
+		return false;
+	}
+
+	return true;
 }

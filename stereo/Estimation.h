@@ -14,7 +14,7 @@
 #define BA_THRESHOLD (1e-03)
 
 #define HUBER_K 1.345f
-#define TUKEY_K 4.685
+#define TUKEY_K 4.685f
 
 /* Estimation Functions */
 bool FindHomography(Eigen::Matrix3f& homography, std::vector<std::pair<Feature, Feature> > matches);
@@ -23,7 +23,7 @@ bool FindHomography(Eigen::Matrix3f& homography, std::vector<std::pair<Feature, 
 std::pair<Eigen::Matrix3f, Eigen::Matrix3f> ConvertPoints(const std::vector<std::pair<Feature, Feature> >& matches);
 
 // Estimate Homography
-bool GetHomographyFromMatches(const std::vector<std::pair<cv::Point, cv::Point>> points, Eigen::Matrix3f& H);
+bool GetHomographyFromMatches(const std::vector<std::pair<cv::Point2f, cv::Point2f>> points, Eigen::Matrix3f& H);
 
 // Evaluate Homography
 std::vector<std::pair<Feature, Feature> > EvaluateHomography(const std::vector<std::pair<Feature, Feature> >& matches, const Eigen::Matrix3f& H);
