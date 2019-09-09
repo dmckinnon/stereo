@@ -1,4 +1,5 @@
 #include "Features.h"
+#include "Stereography.h"
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <errno.h>
@@ -29,7 +30,7 @@ void CreateGaussianKernel(Mat& img, float sigma)
 		}
 	}
 
-	cout << "gaussian kernel: " << endl << img << endl;
+	//cout << "gaussian kernel: " << endl << img << endl;
 }
 
 
@@ -337,17 +338,17 @@ bool FindDoHFeatures(Mat input, Mat mask, vector<Feature>& features)
 	avgFeatureScore /= features.size();
 	cout << "Average score = " << avgFeatureScore << " from " << features.size() << " features"  << endl;
 
-	namedWindow("Image first", WINDOW_AUTOSIZE);
+	/*namedWindow("Image first", WINDOW_AUTOSIZE);
 	for (auto& f : features)
 	{
 		circle(showImg, f.p, 2, (255, 255, 0), -1);
 	}
 	imshow("Image first", showImg);
-	waitKey(0);
+	waitKey(0);*/
 
 	
 	
-	auto temp = ClusterFeatures(features, 15);
+	auto temp = ClusterFeatures(features, 20);
 	features.clear();
 	features.insert(features.end(), temp.begin(), temp.end());
 	
@@ -855,8 +856,14 @@ bool CreateSIFTDescriptors(cv::Mat img, std::vector<Feature>& features, std::vec
 						float angle = 0.f;
 						if (gX != 0)
 							angle = RAD2DEG(atan(gY / gX));
+						else
+							angle = 90;
 						// Make angle relative to feature angle
 						angle -= f.angle;
+						if (angle > 360)
+							angle = (int)angle % 360;
+						if (angle < 0)
+							angle = 0;
 						hist[(int)angle / DESC_BIN_SIZE] += mag * gaussKernel.at<float>(j/DESC_SUB_WINDOW,k/DESC_SUB_WINDOW);
 					}
 				}
@@ -939,6 +946,8 @@ void ComputeFeatureOrientation(Feature& feature, Mat xgrad, Mat ygrad)
 			float angle = 0.f;
 			if (gX != 0)
 				angle = RAD2DEG(atan(gY / gX));
+			else
+				angle = 90;
 			hist[(int)(angle / 10)] += mag * gaussKernel.at<float>(n+(ANGLE_WINDOW/2), m+(ANGLE_WINDOW/2));
 		}
 	}
@@ -1036,7 +1045,12 @@ std::vector<std::pair<Feature, Feature> > MatchDescriptors(std::vector<Feature> 
 	Given a series of image file names, create image descriptors for each file
 */
 // Helper - given an image file name, create an image descriptor for that file
-void CreateDescriptorForImage(const std::string& filename, const std::string& folder, ImageDescriptor& imgDesc, const Mat& mask)
+void CreateDescriptorForImage(
+	const std::string& filename,
+	const std::string& folder,
+	ImageDescriptor& imgDesc,
+	const Eigen::MatrixXf& calibMatrix,
+	const Mat& mask)
 {
 	string imagePath = folder + "\\" + filename;
 	Mat img = imread(imagePath, IMREAD_GRAYSCALE);
@@ -1053,10 +1067,15 @@ void CreateDescriptorForImage(const std::string& filename, const std::string& fo
 	vector<Feature> features;
 	if (!FindDoHFeatures(img, mask, features))
 	{
+#ifdef DEBUG_FEATURES
 		cout << "Failed to find DoH features in image " << filename << endl;
+#endif
+
 		return;
 	}
+#ifdef DEBUG_FEATURES
 	std::cout << features.size() << " features found in image " << filename << std::endl;
+#endif
 
 #ifdef DEBUG
 	Mat img_i = imread(imagePath, IMREAD_GRAYSCALE);
@@ -1074,37 +1093,55 @@ void CreateDescriptorForImage(const std::string& filename, const std::string& fo
 	std::vector<FeatureDescriptor> descriptors;
 	if (!CreateSIFTDescriptors(img, features, descriptors))
 	{
+#ifdef DEBUG_FEATURES
 		cout << "Failed to create feature descriptors for image " << filename << endl;
+#endif
+
 		return;
 	}
 
+#ifdef DEBUG_FEATURES
 	cout << "Image descriptor created for image " << filename << endl;
-	ImageDescriptor i;
-	i.filename = filename;
-	i.features = features;
+#endif
+
+	imgDesc.filename = filename;
+	imgDesc.features = features;
 	// Need to decompose K into K and E = [R|t]. 
 	// This E is different to the E later on, which is between two cameras, not per-camera
-	//DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[idx], i.K, i.E);
+	DecomposeProjectiveMatrixIntoKAndE(calibMatrix, imgDesc.K, imgDesc.E);
 }
 // Actual function
 void GetImageDescriptorsForFile(
 	const std::vector<std::string>& filenames,
 	const std::string& folder,
 	std::vector<ImageDescriptor>& images,
+	const std::vector<Eigen::MatrixXf>& calibrationMatrices,
 	const Mat& mask)
 {
 #pragma omp parallel
 	{
 		// Will this create a separate imageDesciptor per thread?
 		ImageDescriptor i;
-#pragma omp parallel for
+#pragma omp parallel for num_threads(16)
 		for (int idx = 0; idx < filenames.size(); idx++)
 		{
-			CreateDescriptorForImage(filenames[idx], folder, i, mask);
+			CreateDescriptorForImage(filenames[idx], folder, i, calibrationMatrices[idx], mask);
 		}
 
 #pragma omp critical
 		images.push_back(i);
+	}
+
+	// TODO: 
+	// This isn't adding to the vector in a threadsafe way
+	// the image descriptor is overwritten each time
+	// and only 16 get pushed back
+
+
+	// Verify that images has all the dsecriptors?
+	if (images.size() == 0)
+	{
+		cout << "this failed" << endl;
 	}
 }
 

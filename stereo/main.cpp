@@ -237,15 +237,9 @@ int main(int argc, char** argv)
 	}
 	if (!featuresRead)
 	{
-		//GetImageDescriptorsForFile(imageFiles, imageFolder, images, maskImage);
-
-		//for (int idx = 0; idx < calibrationMatrices.size(); ++idx)
-		//{
-		//	auto& imgDesc = images[idx];
-		//	DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[idx], imgDesc.K, imgDesc.E);
-		//}
+		GetImageDescriptorsForFile(imageFiles, imageFolder, images, calibrationMatrices, maskImage);
 		
-
+		/*
 		// Loop over the images to pull out features 
 		for (int idx = 0; idx < imageFiles.size(); idx++)
 		{
@@ -301,6 +295,7 @@ int main(int argc, char** argv)
 			images.push_back(i);
 			
 		}
+		*/
 	}
 	// If opted, check for a features file
 	if (featureFileGiven && !featuresRead)

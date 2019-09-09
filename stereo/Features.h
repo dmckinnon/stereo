@@ -172,7 +172,7 @@ bool CreateSIFTDescriptors(cv::Mat img, std::vector<Feature>& features, std::vec
 
 std::vector<std::pair<Feature, Feature> > MatchDescriptors(std::vector<Feature> list1, std::vector<Feature> list2);
 
-void GetImageDescriptorsForFile(const std::vector<std::string>& filenames, const std::string& folder, std::vector<ImageDescriptor>& images, const cv::Mat& mask);
+void GetImageDescriptorsForFile(const std::vector<std::string>& filenames, const std::string& folder, std::vector<ImageDescriptor>& images, const std::vector<Eigen::MatrixXf>& calibrationMatrices, const cv::Mat& mask);
 
 bool SaveImageDescriptorsToFile(const std::string& filename, std::vector<ImageDescriptor>& images);
 
