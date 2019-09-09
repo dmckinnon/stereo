@@ -8,6 +8,7 @@ information, you can determine the depth (to within some error bound) of any poi
  
 I won't be following any specific paper; rather, just bringing in the theory here and there where necessary. I'll try to explain as best
 I can, but better than to read my explanations is to read the theory behind it. The dataset I'm working from is [here](https://vision.in.tum.de/data/datasets/3dreconstruction) - it's superb, it has a lot of high quality images of objects, and complete calibration data for each view. 
+For displaying images, I'm using OpenCV; [here's how to install it on Windows 10](https://www.youtube.com/watch?v=MXqpHIMdKfU&feature=youtu.be).
 
 # Contents:
 to add
@@ -38,22 +39,22 @@ There are a lot of different types of features, based on how you look for them.
 - SIFT features
 - SURF features
 - ORB features
+- [Difference of Gaussian](https://en.wikipedia.org/wiki/Difference_of_Gaussians) features
+- [Determinant of hessian](https://milania.de/blog/Introduction_to_the_Hessian_feature_detector_for_finding_blobs_in_an_image) features 
 
 
 There are plenty more. Some are simple, some are ... rather complex (read the wikipedia page for SIFT features, and enjoy). They each might find slightly different things, but in general, what 'feature detectors' aim to do is find points in an image that are sufficiently distinct that you can easily find that same feature again in another image - a future one, or the other of a stereo pair, for example. Features are distinct things like corners (of a table, of an eye, of a leaf, whatever), or edges, or points in the image where there is a lot of change in more than just one direction. To give an example of what is not a feature, think of a blank wall. Take a small part of it. Could you find that bit again on the wall? That exact bit? It's not very distinct, so you likely couldn't. Then take a picture of someone's face. If I gave you a small image snippet containing just a bit of the corner of an eye, you'd find where it fit very quickly. AIShack has a [rather good overview](http://aishack.in/tutorials/features/) of the general theory of features.
 
-In this tutorial and program, I'm using FAST features. These are also called FAST corners because they are specifically designed to find corners. 
+In [my other tutorial](https://github.com/dmckinnon/stitch) I used FAST features, also called FAST corners. If you want a quick overview, see my other tutorial or OpenCV's [Explanation of FAST](https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_feature2d/py_fast/py_fast.html). They worked excellently there because panorama images typically have a lot of things with sharp corners. However, here, FAST corners actually work really badly. Why?
 
-- OpenCV's [Explanation of FAST](https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_feature2d/py_fast/py_fast.html)
-- Here is a better [reference implementation of FAST](https://github.com/edrosten/fast-C-src), that is trained by a learner
-- Here is the [original paper](https://www.edwardrosten.com/work/rosten_2006_machine.pdf)
+Consider this: the images I'm using here are things like faces. Faces have a lot of smooth curves, and not many very sharp changes. Put them under a lot of soft lighting, and you lose many sharp corners. FAST features are few and far between here. So what shall we use, then?
 
-OpenCV's explanation is pretty good, so I'll be brief with my own here, since it's ... heavily influenced and copied from that.
+The [Determinant of the Hessian](https://milania.de/blog/Introduction_to_the_Hessian_feature_detector_for_finding_blobs_in_an_image) is a good place to start. This detector is designed to find feature 'blobs', and not corners. As the link says, 
+"So, what exactly is a blob in an image? It is a homogeneous area with roughly equal intensity values compared to the surrounding". What does this mean? An area of pixels all roughly the same shade, surrounded by pixels clearly not the same shade. Consider, say, a nose - one sees a dark blob up the nostril. All pixels would be roughly the same amount of dark, surrounded by lighter skin pixels. But a blob need not be a circle - rather, any region of relatively uniform intensity. 
 
-The idea behind FAST is that corners usually have two lines leading away from them, and that the intensity of the pixels in one of the two angles created by those lines will be either lighter or darker than the other. For example, think of the corner of a roof with the sun above. Two lines (the roof edges) come out from the corner, and below will be darker than above. The way a FAST feature detector works is that for each pixel, it scans a circle of 16 pixels around it, about 3 pixels radius, and compares the intensities to the centre intensity (plus or minus a threshold). If there is a stretch of sequential pixels 12 or more in length that are all of greater intensity (plus a threshold) than the centre, or lesser intensity (minus a threshold) than the centre, this is deemed a FEATURE. (OpenCV's explanation has some better visuals)
+A brief explanation for what the Determinant of Hessian detector is (since that article goes into the deeper details): the Hessian matrix is a matrix of second-order derivatives around a point (*x*, *y*). When you are looking at second derivatives in the 2 dimensional case, you're looking at the curvature of the function. As that, with this - we are considering the local curvative of a 3 dimensional function (a function in two variables). We need the Hessian matrix *H*, a directional vector *v* for the direction we care about, and a location (*x*, *y*), and compute *H* at this point in direction of *v* by *v*^T * *H* * *v*. The eigenvectors of this then describe the vectors of highest and lowest curvature. But high curvature describes edges, in an image! If both eigenvalues are large, then we have strong curvature in every direction, and likely have an interest patch. Recalling that the determinant of a matrix equates to the product of its eigenvalues; hence, if the determinant of the hessian matrix for a patch is large, both eigenvalues are large (probably) and we have strong curvature. Label this point a feature!
 
-
-One thing worth noting here though is that FAST features are probably not good for this application. FAST features are superb for corners. But what if the object you are looking to reconstruct doesn't have much in the way of corners, but is textured? Well, FAST features will be found somewhere. But something like SIFT features, using a different of gaussians across scale space, will be more successful in finding more features over more area. It's a considerably more expensive operation, but scene reconstruction is generally expensive anyway, so it'd probably worth it. However, I have a functioning FAST feature detector, and SIFT is a tough algorithm, so let's make do with FAST. 
+The full Determinant of Hessian detector is more detailed and nuanced than this; this is just a high level overview. 
 
 
 # Feature Description and Matching
