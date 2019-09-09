@@ -1,6 +1,7 @@
 #include "Features.h"
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <errno.h>
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -27,6 +28,8 @@ void CreateGaussianKernel(Mat& img, float sigma)
 			img.at<float>(x, y) = g;
 		}
 	}
+
+	cout << "gaussian kernel: " << endl << img << endl;
 }
 
 
@@ -37,6 +40,9 @@ void CreateGaussianKernel(Mat& img, float sigma)
 	window size to compact clusters into single features.
 	For each feature, within a window around it, if it is the strongest feature then
 	remove all others; otherwise move on, it will be removed as part of the other feature's window
+
+	TODO: This can be made WAY more efficient with a kd-tree
+	since this is the most time consuming part of the feature extraction
 */
 vector<Feature> ClusterFeatures(vector<Feature>& features, const int windowSize)
 {
@@ -206,21 +212,35 @@ vector<Feature> FindHarrisCorners(const Mat& img, int nmsWindowSize)
 
 	Note that descriptors are computed NOT in the scale space
 */
-bool FindDoHFeatures(Mat input, vector<Feature>& features)
+bool FindDoHFeatures(Mat input, Mat mask, vector<Feature>& features)
 {
+	// First, confirm that the mask is the same size as the image
+	if (mask.cols != input.cols || mask.rows != input.rows)
+		return false;
+
 	// Get gaussian kernel for weighting the gradients within the window
 	Mat gaussKernel = Mat(DOH_WINDOW, DOH_WINDOW, CV_32F, 1);
 	CreateGaussianKernel(gaussKernel, 1);
 
 	// We run this over an image that uses normalised pixels - that is, values between 0 and 1, representing 0-255
 	Mat img = Mat(input.rows, input.cols, CV_32F, 1);
+	Mat showImg = img.clone();
 	for (int y = 0; y < img.rows; ++y)
 	{
 		for (int x = 0; x < img.cols; ++x)
 		{
+			if (mask.at<uchar>(y,x) < 127)
+			{
+				showImg.at<float>(y, x) = 0;
+			}
+			else
+			{
+				showImg.at<float>(y, x) = (float)input.at<uchar>(y, x) / 255.f;
+			}
 			img.at<float>(y, x) = (float)input.at<uchar>(y, x) / 255.f;
 		}
 	}
+	
 
 	// Iterate over scale space
 	float maxFeatureScore = 0;
@@ -241,7 +261,7 @@ bool FindDoHFeatures(Mat input, vector<Feature>& features)
 		Mat grad_x, grad_y;
 		int scale = 1;
 		int delta = 0;
-		int ddepth = CV_8U;
+		int ddepth = CV_32F;
 		Sobel(sobel, grad_x, ddepth, 1, 0, DOH_WINDOW, scale, delta, BORDER_DEFAULT);
 		Sobel(sobel, grad_y, ddepth, 0, 1, DOH_WINDOW, scale, delta, BORDER_DEFAULT);
 		// We have our x and y gradients
@@ -249,7 +269,6 @@ bool FindDoHFeatures(Mat input, vector<Feature>& features)
 
 		int width = img.cols;
 		int height = img.rows;
-		std::vector<Feature> goodFeatures;
 		float avgEigen = 0.f;
 
 		// Loop over all pixels in the image, and check for Harris corners
@@ -258,6 +277,12 @@ bool FindDoHFeatures(Mat input, vector<Feature>& features)
 		{
 			for (int x = DOH_WINDOW / 2 + 1; x < img.cols - DOH_WINDOW / 2; x += 2)
 			{
+				// If out of masked region, ignore
+				if (mask.at<uchar>(y, x) < 127)
+				{
+					continue;
+				}
+
 				int winSize = DOH_WINDOW / 2;
 				Mat H = Mat::zeros(2, 2, CV_32F);
 				// Go through the window around the point
@@ -272,10 +297,10 @@ bool FindDoHFeatures(Mat input, vector<Feature>& features)
 						int i = n + y;
 						int j = m + x;
 						float w = gaussKernel.at<float>(n + (DOH_WINDOW / 2), m + (DOH_WINDOW / 2));
-						H.at<float>(0, 0) += w * (float)(grad_x.at<uchar>(i, j) * grad_x.at<uchar>(i, j));
-						H.at<float>(0, 1) += w * (float)(grad_x.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
-						H.at<float>(1, 0) += w * (float)(grad_x.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
-						H.at<float>(1, 1) += w * (float)(grad_y.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
+						H.at<float>(0, 0) += w * (grad_x.at<float>(i, j) * grad_x.at<float>(i, j));
+						H.at<float>(0, 1) += w * (grad_x.at<float>(i, j) * grad_y.at<float>(i, j));
+						H.at<float>(1, 0) += w * (grad_x.at<float>(i, j) * grad_y.at<float>(i, j));
+						H.at<float>(1, 1) += w * (grad_y.at<float>(i, j) * grad_y.at<float>(i, j));
 					}
 				}
 
@@ -285,7 +310,7 @@ bool FindDoHFeatures(Mat input, vector<Feature>& features)
 				// This is just the determinant of the hessian, times the scale factor to the fourth power
 				float detM = H.at<float>(0, 0) * H.at<float>(1, 1) - H.at<float>(0, 1) * H.at<float>(1, 0);
 				//float traceM = H.at<float>(0, 0) + H.at<float>(1, 1);
-				float score = detM*k*k*k*k;
+				float score = detM;// *k* k;// *k* k;
 
 				//std::cout << "score: " << score << std::endl;
 
@@ -293,6 +318,7 @@ bool FindDoHFeatures(Mat input, vector<Feature>& features)
 				if (score > DOH_THRESHOLD)
 				{
 					Feature f;
+					f.scale = k;
 					f.p.x = (float)x;
 					f.p.y = (float)y;
 					f.score = score;
@@ -309,8 +335,19 @@ bool FindDoHFeatures(Mat input, vector<Feature>& features)
 	}
 
 	avgFeatureScore /= features.size();
+	cout << "Average score = " << avgFeatureScore << " from " << features.size() << " features"  << endl;
+
+	namedWindow("Image first", WINDOW_AUTOSIZE);
+	for (auto& f : features)
+	{
+		circle(showImg, f.p, 2, (255, 255, 0), -1);
+	}
+	imshow("Image first", showImg);
+	waitKey(0);
+
 	
-	auto temp = ClusterFeatures(features, 20);
+	
+	auto temp = ClusterFeatures(features, 15);
 	features.clear();
 	features.insert(features.end(), temp.begin(), temp.end());
 	
@@ -631,7 +668,7 @@ std::vector<Feature> ScoreAndClusterFeatures(Mat img, vector<Feature>& features)
 
 	int width = img.cols;
 	int height = img.rows;
-	int numFeatures = features.size();
+	int numFeatures = (int)features.size();
 	std::vector<Feature> goodFeatures;
 	float avgEigen = 0.f;
 	// Loop over all features in the given list to score them
@@ -649,8 +686,8 @@ std::vector<Feature> ScoreAndClusterFeatures(Mat img, vector<Feature>& features)
 		{
 			for (int m = -(ST_WINDOW / 2); m <= (ST_WINDOW / 2); ++m)
 			{
-				int i = n + f.p.y;
-				int j = m + f.p.x;
+				int i = n + (int)f.p.y;
+				int j = m + (int)f.p.x;
 				float w = gaussKernel.at<float>(n + (ST_WINDOW / 2), m + (ST_WINDOW / 2));
 				M.at<float>(0, 0) += w * (float)(grad_x.at<uchar>(i, j) * grad_x.at<uchar>(i, j));
 				M.at<float>(0, 1) += w * (float)(grad_x.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
@@ -693,8 +730,8 @@ std::vector<Feature> ScoreAndClusterFeatures(Mat img, vector<Feature>& features)
 				continue;
 
 			auto& f2 = goodFeatures[i];
-			int xmargin = abs(f.p.x - f2.p.x);
-			int ymargin = abs(f.p.y - f2.p.y);
+			int xmargin = (int)abs(f.p.x - f2.p.x);
+			int ymargin = (int)abs(f.p.y - f2.p.y);
 			if (xmargin <= NMS_WINDOW && ymargin <= NMS_WINDOW)
 			{
 				if (f.score < f2.score)
@@ -772,8 +809,7 @@ bool CreateSIFTDescriptors(cv::Mat img, std::vector<Feature>& features, std::vec
 
 	// Construct a Gaussian kernel for weighting descriptor entries
 	Mat gaussKernel = Mat(DESC_SUB_WINDOW, DESC_SUB_WINDOW, CV_32F, 1);
-	for (int i = 0; i < DESC_SUB_WINDOW; ++i) for (int j = 0; j < DESC_SUB_WINDOW; ++j) gaussKernel.at<float>(i, j) = 1;
-	GaussianBlur(gaussKernel, gaussKernel, Size(ST_WINDOW, ST_WINDOW), 1.5, 1.5, BORDER_DEFAULT);
+	CreateGaussianKernel(gaussKernel, 1);
 
 	// For each feature
 	for (unsigned int i = 0; i < features.size(); ++i)
@@ -792,18 +828,18 @@ bool CreateSIFTDescriptors(cv::Mat img, std::vector<Feature>& features, std::vec
 		// point isn't aligned with the centre.
 		// Instead of interpolating, we're just going to create the window with
 		// the feature at 8,8. It'll work as an approximation
-		for (unsigned int j = 0; j < DESC_WINDOW; j += DESC_SUB_WINDOW)
+		for (int j = 0; j < DESC_WINDOW; j += DESC_SUB_WINDOW)
 		{
-			for (unsigned int k = 0; k < DESC_WINDOW; k += DESC_SUB_WINDOW)
+			for (int k = 0; k < DESC_WINDOW; k += DESC_SUB_WINDOW)
 			{
 				float hist[DESC_BINS] = {0.0f};
 				// For each 4x4 block
-				for (unsigned int n = j; n < j+DESC_SUB_WINDOW; ++n)
+				for (int n = j; n < j+DESC_SUB_WINDOW; ++n)
 				{
-					for (unsigned int m = k; m < k + DESC_SUB_WINDOW; ++m)
+					for (int m = k; m < k + DESC_SUB_WINDOW; ++m)
 					{
-						int imgX = f.p.x - (DESC_WINDOW / 2) + m;
-						int imgY = f.p.y - (DESC_WINDOW / 2) + n;
+						int imgX = (int)f.p.x - (DESC_WINDOW / 2) + m;
+						int imgY = (int)f.p.y - (DESC_WINDOW / 2) + n;
 
 						// Ensure that window stays within bounds of image. xgrad and ygrad have the same size
 						if (imgY < 0 || imgY >= grad_x.rows)
@@ -876,8 +912,7 @@ void ComputeFeatureOrientation(Feature& feature, Mat xgrad, Mat ygrad)
 	// get Gaussian weighting function. Use a sigma 1.5 times the scale
 	// For now, sigma is just 1.5
 	Mat gaussKernel = Mat(ANGLE_WINDOW, ANGLE_WINDOW, CV_32F, 1);
-	for (int i = 0; i < ANGLE_WINDOW; ++i) for (int j = 0; j < ANGLE_WINDOW; ++j) gaussKernel.at<float>(i, j) = 1;
-	GaussianBlur(gaussKernel, gaussKernel, Size(ST_WINDOW, ST_WINDOW), 1.5, 1.5, BORDER_DEFAULT);
+	CreateGaussianKernel(gaussKernel, 1);
 
 	// Create histogram
 	float hist[ORIENTATION_HIST_BINS] = { 0.0f };
@@ -887,8 +922,8 @@ void ComputeFeatureOrientation(Feature& feature, Mat xgrad, Mat ygrad)
 		for (int m = -(ANGLE_WINDOW / 2); m <= (ANGLE_WINDOW / 2); ++m)
 		{
 			// Compute magnitude and angle and add to histogram
-			int i = n + feature.p.y;
-			int j = m + feature.p.x;
+			int i = n + (int)feature.p.y;
+			int j = m + (int)feature.p.x;
 			
 			// Ensure that window stays within bounds of image. xgrad and ygrad have the same size
 			if (i < 0 || i >= xgrad.rows)
@@ -1001,7 +1036,7 @@ std::vector<std::pair<Feature, Feature> > MatchDescriptors(std::vector<Feature> 
 	Given a series of image file names, create image descriptors for each file
 */
 // Helper - given an image file name, create an image descriptor for that file
-void CreateDescriptorForImage(const std::string& filename, const std::string& folder, ImageDescriptor& imgDesc)
+void CreateDescriptorForImage(const std::string& filename, const std::string& folder, ImageDescriptor& imgDesc, const Mat& mask)
 {
 	string imagePath = folder + "\\" + filename;
 	Mat img = imread(imagePath, IMREAD_GRAYSCALE);
@@ -1016,7 +1051,7 @@ void CreateDescriptorForImage(const std::string& filename, const std::string& fo
 
 	// Find DOH features
 	vector<Feature> features;
-	if (!FindDoHFeatures(img, features))
+	if (!FindDoHFeatures(img, mask, features))
 	{
 		cout << "Failed to find DoH features in image " << filename << endl;
 		return;
@@ -1052,7 +1087,11 @@ void CreateDescriptorForImage(const std::string& filename, const std::string& fo
 	//DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[idx], i.K, i.E);
 }
 // Actual function
-void GetImageDescriptorsForFile(const std::vector<std::string>& filenames, const std::string& folder, std::vector<ImageDescriptor>& images)
+void GetImageDescriptorsForFile(
+	const std::vector<std::string>& filenames,
+	const std::string& folder,
+	std::vector<ImageDescriptor>& images,
+	const Mat& mask)
 {
 #pragma omp parallel
 	{
@@ -1061,7 +1100,7 @@ void GetImageDescriptorsForFile(const std::vector<std::string>& filenames, const
 #pragma omp parallel for
 		for (int idx = 0; idx < filenames.size(); idx++)
 		{
-			CreateDescriptorForImage(filenames[idx], folder, i);
+			CreateDescriptorForImage(filenames[idx], folder, i, mask);
 		}
 
 #pragma omp critical
@@ -1074,7 +1113,20 @@ void GetImageDescriptorsForFile(const std::vector<std::string>& filenames, const
 */
 bool SaveImageDescriptorsToFile(const std::string& filename, vector<ImageDescriptor>& images)
 {
-
+	ofstream descFile;
+	descFile.open(filename);
+	if (descFile.is_open())
+	{
+		for (auto& i : images)
+		{
+			descFile << i;
+		}
+		descFile.close();
+	}
+	else
+	{
+		return false;
+	}
 
 	return true;
 }
@@ -1088,7 +1140,27 @@ bool ReadDescriptorsFromFile(const std::string& filename, vector<ImageDescriptor
 	descFile.open(filename);
 	if (descFile.is_open())
 	{
-
+		while (!descFile.eof())
+		{
+			ImageDescriptor i;
+			descFile >> i;
+			/*if (descFile.fail())
+			{
+				size_t errmsglen = 94;
+				char* errmsg = (char*)malloc(sizeof(char)* errmsglen);
+				strerror_s(errmsg, errmsglen, errno);
+				errmsg[93] = '\0';
+				std::cerr << "Error: " << errmsg << endl;
+				descFile.close();
+				return false;
+			}*/
+			if (i.features.size() < 1)
+			{
+				continue;
+			}
+			images.push_back(i);
+		}
+		descFile.close();
 	}
 	else
 	{

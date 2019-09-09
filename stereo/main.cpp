@@ -25,7 +25,7 @@ using namespace std;
 using namespace cv;
 using namespace Eigen;
 
-#define STEREO_OVERLAP_THRESHOLD 20
+#define STEREO_OVERLAP_THRESHOLD 30
 
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
 
@@ -141,49 +141,68 @@ int main(int argc, char** argv)
 	if (argc < 2 || strcmp(argv[1], "-h") == 0)
 	{
 		cout << "Usage:" << endl;
-		cout << "stereo.exe <Folder to images> <Folder to calibration matrices> [Folder to save/load features]" << endl;
+		cout << "stereo.exe <Folder to images> <Folder to calibration matrices> -mask [mask image] -features [Folder to save/load features]" << endl;
 		exit(1);
 	}
 	string imageFolder = argv[1];
 	auto imageFiles = get_all_files_names_within_folder(imageFolder);
 
+	string featurePath = "";
+	bool featureFileGiven = false;
+	Mat maskImage;
+	if (argc >= 3)
+	{
+		for (int i = 3; i < argc; i += 2)
+		{
+			if (strcmp(argv[i], "-mask") == 0)
+			{
+				maskImage = imread(argv[i+1], IMREAD_GRAYSCALE);
+			}
+			if (strcmp(argv[i], "-features") == 0)
+			{
+				featurePath = string(argv[i+1]);
+				featureFileGiven = true;
+			}
+		}
+	}
+
 	// Collect the camera matrices
 	// Note that the camera matrices are not necessarily at the centre of their own coordinate system;
 	// they may have encoded some rigid-body transform in there as well?
 	vector<MatrixXf> calibrationMatrices;
-	if (argc >= 3)
+	string calibFolder = argv[2];
+	auto calibFiles = get_all_files_names_within_folder(calibFolder);
+	for (const auto& calib : calibFiles)
 	{
-		string calibFolder = argv[2];
-		auto calibFiles = get_all_files_names_within_folder(calibFolder);
-		for (const auto& calib : calibFiles)
+		ifstream calibFile;
+		calibFile.open(calibFolder + "\\" + calib);
+		if (calibFile.is_open())
 		{
-			ifstream calibFile;
-			calibFile.open(calibFolder + "\\" + calib);
-			if (calibFile.is_open())
+			string line;
+			if (getline(calibFile, line))
 			{
-				string line;
-				if (getline(calibFile, line))
+				if (strcmp(line.c_str(), "CONTOUR") == 0)
 				{
-					if (strcmp(line.c_str(), "CONTOUR") == 0)
+					// This is a good calib file, so read in the data
+					int i = 0;
+					MatrixXf K(3,4);
+					K.setZero();
+					while (getline(calibFile, line))
 					{
-						// This is a good calib file, so read in the data
-						int i = 0;
-						MatrixXf K(3,4);
-						K.setZero();
-						while (getline(calibFile, line))
-						{
-							stringstream ss(line);
-							for (int j = 0; j < 4; ++j)
-								ss >> K(i,j);
-							i += 1;
-						}
-						calibrationMatrices.push_back(K);
-						//cout << K << endl;
+						stringstream ss(line);
+						for (int j = 0; j < 4; ++j)
+							ss >> K(i,j);
+						i += 1;
 					}
+					calibrationMatrices.push_back(K);
+					//cout << K << endl;
 				}
 			}
 		}
 	}
+
+	// Get the mask image, if there is one
+
 
 	// How shall we have the architecture?
 	// open image, then store extracted features, name, in a structure
@@ -198,17 +217,17 @@ int main(int argc, char** argv)
 	// If we have a pre-existing feature file, use that. 
 	// Otherwise, loop over the images to get the descriptors
 	vector<ImageDescriptor> images;
-	bool featureFileGiven = false;
 	bool featuresRead = false;
-	if (argc >= 4)
+	if (featureFileGiven)
 	{
-		featureFileGiven = true;
+		std::cout << "Attempting to load features from " << featurePath << std::endl;
 		// If the feature file exists, read the image descriptors from it
-		if (does_file_exist(argv[4]))
+		if (does_file_exist(featurePath))
 		{
-			if (ReadDescriptorsFromFile(argv[4], images))
+			if (ReadDescriptorsFromFile(featurePath, images))
 			{
 				featuresRead = true;
+				cout << "Read descriptors from " << featurePath << endl;
 			}
 			else
 			{
@@ -216,68 +235,80 @@ int main(int argc, char** argv)
 			}
 		}
 	}
-	// Loop over the images to pull out features 
-	for (int idx = 0; idx < imageFiles.size(); idx++)
+	if (!featuresRead)
 	{
-		const auto& imageName = imageFiles[idx];
-		string imagePath = imageFolder + "\\" + imageName;
-		Mat img = imread(imagePath, IMREAD_GRAYSCALE);
+		//GetImageDescriptorsForFile(imageFiles, imageFolder, images, maskImage);
 
-		// Scale the image to be square along the smaller axis
-		// ONLY IF we have no calibration matrices
-		//if (calibrationMatrices.empty())
+		//for (int idx = 0; idx < calibrationMatrices.size(); ++idx)
 		//{
-		//	int size = min(img.cols, img.rows);
-		//	resize(img, img, Size(size, size), 0, 0, CV_INTER_LINEAR);
+		//	auto& imgDesc = images[idx];
+		//	DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[idx], imgDesc.K, imgDesc.E);
 		//}
+		
 
-		// Find DOH features
-		vector<Feature> features;
-		if (!FindDoHFeatures(img, features))
+		// Loop over the images to pull out features 
+		for (int idx = 0; idx < imageFiles.size(); idx++)
 		{
-			cout << "Failed to find DoH features in image " << imageName << endl;
-			return 0;
-		}
-		std::cout << features.size() << " features found in image " << imageName << std::endl;
+			const auto& imageName = imageFiles[idx];
+			string imagePath = imageFolder + "\\" + imageName;
+			Mat img = imread(imagePath, IMREAD_GRAYSCALE);
+
+			// Scale the image to be square along the smaller axis
+			// ONLY IF we have no calibration matrices
+			//if (calibrationMatrices.empty())
+			//{
+			//	int size = min(img.cols, img.rows);
+			//	resize(img, img, Size(size, size), 0, 0, CV_INTER_LINEAR);
+			//}
+
+			// Find DOH features
+			vector<Feature> features;
+			if (!FindDoHFeatures(img, maskImage, features))
+			{
+				cout << "Failed to find DoH features in image " << imageName << endl;
+				return 0;
+			}
+			std::cout << features.size() << " features found in image " << imageName << std::endl;
 
 #ifdef DEBUG
-		Mat img_i = imread(imagePath, IMREAD_GRAYSCALE);
-		for (auto& f : features)
-		{
-			circle(img_i, f.p, 3, (255, 255, 0), -1);
-		}
-		
-		// Display
-		imshow("Image - best features", img_i);
-		waitKey(0);
+			Mat img_i = imread(imagePath, IMREAD_GRAYSCALE);
+			for (auto& f : features)
+			{
+				circle(img_i, f.p, 3, (255, 255, 0), -1);
+			}
+
+			// Display
+			imshow("Image - best features", img_i);
+			waitKey(0);
 #endif
 
-		// Create descriptors for each feature in the image
-		std::vector<FeatureDescriptor> descriptors;
-		if (!CreateSIFTDescriptors(img, features, descriptors))
-		{
-			cout << "Failed to create feature descriptors for image " << imageName << endl;
-			return 0;
+			// Create descriptors for each feature in the image
+			std::vector<FeatureDescriptor> descriptors;
+			if (!CreateSIFTDescriptors(img, features, descriptors))
+			{
+				cout << "Failed to create feature descriptors for image " << imageName << endl;
+				return 0;
+			}
+
+			cout << "Image descriptor created for image " << imageName << endl;
+			ImageDescriptor i;
+			i.filename = imageName;
+			i.features = features;
+			// Need to decompose K into K and E = [R|t]. 
+			// This E is different to the E later on, which is between two cameras, not per-camera
+			DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[idx], i.K, i.E);
+			//#pragma omp critical
+			images.push_back(i);
+			
 		}
-
-		cout << "Image descriptor created for image " << imageName << endl;
-		ImageDescriptor i;
-		i.filename = imageName;
-		i.features = features;
-		// Need to decompose K into K and E = [R|t]. 
-		// This E is different to the E later on, which is between two cameras, not per-camera
-		DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[idx], i.K, i.E);
-        //#pragma omp critical
-		images.push_back(i);
 	}
-
 	// If opted, check for a features file
-	if (featureFileGiven)
+	if (featureFileGiven && !featuresRead)
 	{
 		// If the features file does not exist, save the features out to it
-		if (!does_file_exist(argv[4]))
+		if (!does_file_exist(featurePath))
 		{
-			if (!SaveImageDescriptorsToFile(argv[4], images))
+			if (!SaveImageDescriptorsToFile(featurePath, images))
 			{
 				std::cout << "Saving descriptors to file failed" << std::endl;
 			}
@@ -289,7 +320,7 @@ int main(int argc, char** argv)
 	vector<StereoPair> pairs;
 	// THis should be stored in a 2D matrix where the index in the matrix corresponds to array index
 	// and the array holds the fundamental matrix
-	int s = images.size();
+	int s = (int)images.size();
 	StereoPair** matrices = new StereoPair * [s];
 	for (int k = 0; k < s; ++k)
 	{
@@ -314,6 +345,7 @@ int main(int argc, char** argv)
 				cout << matches.size() << " features - not enough overlap between " << images[i].filename << " and " << images[j].filename << endl;
 				continue;
 			}
+			cout << matches.size() << " features found between " << images[i].filename << " and " << images[j].filename << endl;
 
 			// Compute Fundamental matrix
 			Matrix3f fundamentalMatrix;
@@ -325,7 +357,7 @@ int main(int argc, char** argv)
 
 			cout << "Fundamental matrix found for pair " << images[i].filename << " and " << images[j].filename << endl;
 
-			matrices[i][j].img1 = images[i];
+  			matrices[i][j].img1 = images[i];
 			matrices[i][j].img2 = images[j];
 			matrices[i][j].F = fundamentalMatrix;
 			// These K's need to just be the camera matrices
@@ -369,25 +401,28 @@ int main(int argc, char** argv)
 			// From Lindstrom's paper, copying notation, we have that
 			// xEx' = 0
 			// and we follow this convention, where m.first is x', and m.second is x
+
+			// Display
+			namedWindow("Image first", WINDOW_AUTOSIZE);
+			namedWindow("Image second", WINDOW_AUTOSIZE);
+			Mat img_i = imread(imageFolder + "\\" + images[i].filename, IMREAD_GRAYSCALE);
+			Mat img_j = imread(imageFolder + "\\" + images[j].filename, IMREAD_GRAYSCALE);
+			for (auto& match : matches)
+			{
+				circle(img_i, match.first.p, 2, (255, 255, 0), -1);
+
+				circle(img_j, match.second.p, 2, (255, 255, 0), -1);
+			}
+			imshow("Image first", img_i);
+			imshow("Image second", img_j);
+			waitKey(0);
+
 			for (auto& match : matches)
 			{
 				// TODO: triangulation isn't working. 
-				
-				// Debug: 
-				// display both images and within them the feature to be triangulated
-				namedWindow("Image first", WINDOW_AUTOSIZE);
-				namedWindow("Image second", WINDOW_AUTOSIZE);
-
-				// Draw the relevant feature within each window
-				Mat img_i = imread(imageFolder + "\\" + images[i].filename, IMREAD_GRAYSCALE);
-				circle(img_i, match.first.p, 2, (255, 255, 0), -1);
-				Mat img_j = imread(imageFolder + "\\" + images[j].filename, IMREAD_GRAYSCALE);
-				circle(img_j, match.second.p, 2, (255, 255, 0), -1);
-
-				// Display
-				imshow("Image first", img_i);
-				imshow("Image second", img_j);
-				waitKey(0);
+				// or it gives negative depth
+				// Theory 1: mathematics is wrong somehow, not sure where
+				// Can show this in OpenGL to debug easier?
 
 				Point2f xprime = match.first.p;
 				Point2f x = match.second.p;

@@ -169,6 +169,9 @@ bool DecomposeEssentialMatrix(const Matrix3f& E, Matrix3f& R, Vector3f& t)
 	t(0) = u(0,2);
 	t(1) = u(1, 2);
 	t(2) = u(2, 2);
+	// TODO: Do we need to anti-rotate t?
+
+	return true;
 }
 void LindstromOptimisation(Vector3f& x, Vector3f& xprime, const Matrix3f E)
 {

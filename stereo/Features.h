@@ -29,12 +29,12 @@
 #define DESC_WINDOW 16
 #define DESC_SUB_WINDOW 4
 #define ILLUMINANCE_BOUND 0.2f
-#define NN_RATIO 0.8
+#define NN_RATIO 0.7
 
 // DOH constants
-#define DOH_WINDOW 5
-#define SCALE_SPACE_ITERATIONS 10
-#define DOH_THRESHOLD 700.0
+#define DOH_WINDOW 7
+#define SCALE_SPACE_ITERATIONS 7
+#define DOH_THRESHOLD 500000.0
 
 
 #define PI 3.14159f
@@ -59,10 +59,10 @@ struct Feature
 
 	friend std::ostream& operator << (std::ostream& os, const Feature& f)
 	{
-		os << f.scale << f.p << f.score << f.angle << f.distFromBestMatch << f.depth;
+		os << f.scale << " " << f.p.x << " " << f.p.y << " " << f.score << " " << f.angle << " " << f.distFromBestMatch << " " << f.depth;
 		for (int i = 0; i < DESC_LENGTH; ++i)
 		{
-			os << f.desc.vec[i];
+			os << " " << f.desc.vec[i];
 		}
 		return os;
 	}
@@ -106,7 +106,7 @@ struct ImageDescriptor
 		os << i.features.size() << std::endl;
 		for (auto& f : i.features)
 		{
-			os << f << std::endl;
+			os << f << " ";
 		}
 		return os;
 	}
@@ -160,7 +160,7 @@ bool FeatureCompare(Feature a, Feature b);
 */
 bool FindFASTFeatures(cv::Mat img, std::vector<Feature>& features);
 
-bool FindDoHFeatures(cv::Mat input, std::vector<Feature>& features);
+bool FindDoHFeatures(cv::Mat input, cv::Mat mask, std::vector<Feature>& features);
 
 std::vector<Feature> ClusterFeatures(std::vector<Feature>& features, const int windowSize);
 
@@ -172,7 +172,7 @@ bool CreateSIFTDescriptors(cv::Mat img, std::vector<Feature>& features, std::vec
 
 std::vector<std::pair<Feature, Feature> > MatchDescriptors(std::vector<Feature> list1, std::vector<Feature> list2);
 
-void GetImageDescriptorsForFile(const std::vector<std::string>& filenames, const std::string& folder, std::vector<ImageDescriptor>& images);
+void GetImageDescriptorsForFile(const std::vector<std::string>& filenames, const std::string& folder, std::vector<ImageDescriptor>& images, const cv::Mat& mask);
 
 bool SaveImageDescriptorsToFile(const std::string& filename, std::vector<ImageDescriptor>& images);
 
