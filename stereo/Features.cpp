@@ -1118,18 +1118,18 @@ void GetImageDescriptorsForFile(
 	const std::vector<Eigen::MatrixXf>& calibrationMatrices,
 	const Mat& mask)
 {
-#pragma omp parallel
+#pragma omp parallel num_threads(24)
 	{
 		// Will this create a separate imageDesciptor per thread?
-		ImageDescriptor i;
-#pragma omp parallel for num_threads(16)
+
+#pragma omp for 
 		for (int idx = 0; idx < filenames.size(); idx++)
 		{
+			ImageDescriptor i;
 			CreateDescriptorForImage(filenames[idx], folder, i, calibrationMatrices[idx], mask);
-		}
-
 #pragma omp critical
-		images.push_back(i);
+			images.push_back(i);
+		}
 	}
 
 	// TODO: 
