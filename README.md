@@ -7,7 +7,7 @@ information, you can determine the depth (to within some error bound) of any poi
  rigid-body transformation from one camera to the other).
  
 I won't be following any specific paper; rather, just bringing in the theory here and there where necessary. I'll try to explain as best
-I can, but better than to read my explanations is to read the theory behind it. The dataset I'm working from is [here](https://vision.in.tum.de/data/datasets/3dreconstruction) - it's superb, it has a lot of high quality images of objects, and complete calibration data for each view. 
+I can, but better than to read my explanations is to read the theory behind it. The dataset I'm working from is [this one](http://vision.middlebury.edu/stereo/data/scenes2014/) - it's superb, it has a lot of high quality images of objects, and complete calibration data for each view. [Here is another dataset](https://vision.in.tum.de/data/datasets/3dreconstruction) - this one does multiple views, not just two. It's harder for the features I'm going to be using, but it's worth a shot if you want to expand on this tutorial. 
 For displaying images, I'm using OpenCV; [here's how to install it on Windows 10](https://www.youtube.com/watch?v=MXqpHIMdKfU&feature=youtu.be).
 
 # Contents:
@@ -45,9 +45,7 @@ There are a lot of different types of features, based on how you look for them.
 
 There are plenty more. Some are simple, some are ... rather complex (read the wikipedia page for SIFT features, and enjoy). They each might find slightly different things, but in general, what 'feature detectors' aim to do is find points in an image that are sufficiently distinct that you can easily find that same feature again in another image - a future one, or the other of a stereo pair, for example. Features are distinct things like corners (of a table, of an eye, of a leaf, whatever), or edges, or points in the image where there is a lot of change in more than just one direction. To give an example of what is not a feature, think of a blank wall. Take a small part of it. Could you find that bit again on the wall? That exact bit? It's not very distinct, so you likely couldn't. Then take a picture of someone's face. If I gave you a small image snippet containing just a bit of the corner of an eye, you'd find where it fit very quickly. AIShack has a [rather good overview](http://aishack.in/tutorials/features/) of the general theory of features.
 
-In [my other tutorial](https://github.com/dmckinnon/stitch) I used FAST features, also called FAST corners. If you want a quick overview, see my other tutorial or OpenCV's [Explanation of FAST](https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_feature2d/py_fast/py_fast.html). They worked excellently there because panorama images typically have a lot of things with sharp corners. However, here, FAST corners actually work really badly. Why?
-
-Consider this: the images I'm using here are things like faces. Faces have a lot of smooth curves, and not many very sharp changes. Put them under a lot of soft lighting, and you lose many sharp corners. FAST features are few and far between here. So what shall we use, then?
+In [my other tutorial](https://github.com/dmckinnon/stitch) I used FAST features, also called FAST corners. If you want a quick overview, see my other tutorial or OpenCV's [Explanation of FAST](https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_feature2d/py_fast/py_fast.html). They worked excellently there because panorama images typically have a lot of things with sharp corners. But for this tutorial, I'm going to use DoH features. Why? Just to try another type. 
 
 The [Determinant of the Hessian](https://milania.de/blog/Introduction_to_the_Hessian_feature_detector_for_finding_blobs_in_an_image) is a good place to start. This detector is designed to find feature 'blobs', and not corners. As the link says, 
 "So, what exactly is a blob in an image? It is a homogeneous area with roughly equal intensity values compared to the surrounding". What does this mean? An area of pixels all roughly the same shade, surrounded by pixels clearly not the same shade. Consider, say, a nose - one sees a dark blob up the nostril. All pixels would be roughly the same amount of dark, surrounded by lighter skin pixels. But a blob need not be a circle - rather, any region of relatively uniform intensity. 
@@ -143,8 +141,12 @@ Then came [Kanatani's paper on triangulation](http://citeseerx.ist.psu.edu/viewd
 
 Finally, [Peter Lindstrom improved on Kanatani's method](https://e-reports-ext.llnl.gov/pdf/384387.pdf) by designing a non-iterative quadratic solution that is faster than Hartley and Sturm, and more stable. Technically, it is iterative, but in two iterations it gets numerically close enough for reasonable precision and so Lindstrom just optimised two iterations into the one closed-form algorithm. I'll be honest - I don't really understand this algorithm yet. But I can code it, and that matters more. Can always learn the theory well later. It's based, again, on minimising the delta between the detected points and expected corresponding points, subject to the epipolar constraint. But this time, Lindstrom reworks this equation using [Lagrange Multipliers](https://en.wikipedia.org/wiki/Lagrange_multiplier) to show that we are projecting the detected points onto epipolar lines through the expected points, and from this we can create a quadratic that when solves gives the update that forms the delta to add to the detected points to get the expected points. If this doesn't make sense, that's fine - I don't get it either.  
 
-# Disparity map
-Once we've triangulated every matching pair of points, we can create a disparity map. BAsically an image where each pixel is the depth gotta add more here woo
+# Point Cloud to Mesh
+Once we've triangulated every matching pair of points, we transform each of these into the frame of the first camera (or second; the point is we pick one and stick with it). This is our point cloud! We can render this in something like [MeshLab](http://www.meshlab.net/), which takes .txt files of points in the format
+
+Px Py Pz
+
+and so on. But then it's hard to see how well we captured the scene. So let's construct a mesh. 
 
 
 
