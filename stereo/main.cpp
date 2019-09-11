@@ -10,6 +10,7 @@
 #include <sstream>
 #include <vector>
 #include <math.h>
+#include <algorithm>
 #include "Features.h"
 #include <Eigen/Dense>
 #include <filesystem>
@@ -25,10 +26,10 @@ using namespace std;
 using namespace cv;
 using namespace Eigen;
 
-#define STEREO_OVERLAP_THRESHOLD 30
+#define STEREO_OVERLAP_THRESHOLD 20
 
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
-
+#define DEBUG_MATCHES
 //#define DEBUG
 
 GLuint buffer = 0;
@@ -69,14 +70,7 @@ GLuint program;
 	Depth-map
 
 
-	Log
-	- 
-
 	TODO:
-	- See what sort of Features we get using SIFT and SURF
-
-	- how to pull in images
-	- do we need camera matrices?
 	- TEST NORMALISATION
 	- bring in openGL for visualisation: https://sites.google.com/site/gsucomputergraphics/educational/set-up-opengl
 
@@ -115,7 +109,7 @@ inline bool does_file_exist(const std::string& name) {
 int main(int argc, char** argv)
 {
 	/* Some opengl rubbish to test that I have this working */
-	glutInit(&argc, argv);
+	/*glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
 	glutInitWindowSize(640, 480);   // Set the window's initial width & height
 	glutInitWindowPosition(50, 50); // Position the window's initial top-left corner
@@ -133,7 +127,7 @@ int main(int argc, char** argv)
 	glShadeModel(GL_SMOOTH);   // Enable smooth shading
 	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Nice perspective corrections
 	// Start the event loop
-	glutMainLoopEvent();
+	glutMainLoopEvent();*/
 
 
 
@@ -141,11 +135,8 @@ int main(int argc, char** argv)
 	if (argc < 2 || strcmp(argv[1], "-h") == 0)
 	{
 		cout << "Usage:" << endl;
-		cout << "stereo.exe <Folder to images> <Folder to calibration matrices> -mask [mask image] -features [Folder to save/load features]" << endl;
+		cout << "stereo.exe <Folder to images> <calibration file> -mask [mask image] -features [Folder to save/load features]" << endl;
 		exit(1);
-	}
-	string imageFolder = argv[1];
-	auto imageFiles = get_all_files_names_within_folder(imageFolder);
 
 	string featurePath = "";
 	bool featureFileGiven = false;
@@ -166,56 +157,73 @@ int main(int argc, char** argv)
 		}
 	}
 
+	vector<ImageDescriptor> images;
+	// Create an image descriptor for each image file we have
+	string imageFolder = argv[1];
+	auto imageFiles = get_all_files_names_within_folder(imageFolder);
+	for (auto& image : imageFiles)
+	{
+		ImageDescriptor img;
+		img.filename = imageFolder + "\\" + image;
+		images.push_back(img);
+	}
+
 	// Collect the camera matrices
 	// Note that the camera matrices are not necessarily at the centre of their own coordinate system;
 	// they may have encoded some rigid-body transform in there as well?
 	vector<MatrixXf> calibrationMatrices;
-	string calibFolder = argv[2];
-	auto calibFiles = get_all_files_names_within_folder(calibFolder);
-	for (const auto& calib : calibFiles)
+	string calib = argv[2];
+	ifstream calibFile;
+	calibFile.open(calib);
+	if (calibFile.is_open())
 	{
-		ifstream calibFile;
-		calibFile.open(calibFolder + "\\" + calib);
-		if (calibFile.is_open())
+		string line;
+		while (getline(calibFile, line))
 		{
-			string line;
-			if (getline(calibFile, line))
+			Matrix3f K;
+			replace(line.begin(), line.end(), '[', ' ');
+			replace(line.begin(), line.end(), ']', ' ');
+			// extract the numbers out of the stringstream
+			vector<string> tokens;
+			string token;
+			stringstream stream;
+			stream << line;
+			while (!stream.eof())
 			{
-				if (strcmp(line.c_str(), "CONTOUR") == 0)
+				stream >> token;
+				tokens.push_back(token);
+			}
+
+			// if line contains cam
+			if (strcmp(tokens[0].c_str(), "cam0") == 0)
+			{
+				// Read calibration and assign to descriptor for image 0
+				
+				
+				for (auto& img : images)
 				{
-					// This is a good calib file, so read in the data
-					int i = 0;
-					MatrixXf K(3,4);
-					K.setZero();
-					while (getline(calibFile, line))
+					if (img.filename.find("0"))
 					{
-						stringstream ss(line);
-						for (int j = 0; j < 4; ++j)
-							ss >> K(i,j);
-						i += 1;
+						img.K = K;
 					}
-					calibrationMatrices.push_back(K);
-					//cout << K << endl;
+				}
+			}
+			else if (strcmp(tokens[0].c_str(), "cam1") == 0)
+			{
+				// Read calibration and assign to image 1
+				for (auto& img : images)
+				{
+					if (img.filename.find("0"))
+					{
+						img.K = K;
+					}
 				}
 			}
 		}
 	}
 
-	// Get the mask image, if there is one
-
-
-	// How shall we have the architecture?
-	// open image, then store extracted features, name, in a structure
-	// over each pair, if they have enough overlap, compute the Fundamental
-	// for each pair, reopen the images, construct the depth-map
-	// OR over all the images, triangulate and reconstruct
-
-
-	// Need a structure to hold extracted features, name
-	// Then a structure to hold two of these, and a fundamental matrix
-
-	// If we have a pre-existing feature file, use that. 
-	// Otherwise, loop over the images to get the descriptors
+	// We have the option of saving the feature descriptors out to a file
+	// If we have done that, we can pull that in to avoid recomputing features every time
 	vector<ImageDescriptor> images;
 	bool featuresRead = false;
 	if (featureFileGiven)
@@ -237,65 +245,25 @@ int main(int argc, char** argv)
 	}
 	if (!featuresRead)
 	{
-		GetImageDescriptorsForFile(imageFiles, imageFolder, images, calibrationMatrices, maskImage);
-		
-		/*
-		// Loop over the images to pull out features 
-		for (int idx = 0; idx < imageFiles.size(); idx++)
+		for (auto& image : images)
 		{
-			const auto& imageName = imageFiles[idx];
-			string imagePath = imageFolder + "\\" + imageName;
-			Mat img = imread(imagePath, IMREAD_GRAYSCALE);
-
-			// Scale the image to be square along the smaller axis
-			// ONLY IF we have no calibration matrices
-			//if (calibrationMatrices.empty())
-			//{
-			//	int size = min(img.cols, img.rows);
-			//	resize(img, img, Size(size, size), 0, 0, CV_INTER_LINEAR);
-			//}
-
-			// Find DOH features
-			vector<Feature> features;
-			if (!FindDoHFeatures(img, maskImage, features))
+			Mat img = imread(image.filename, IMREAD_GRAYSCALE);
+			vector<Feature> features = FindHarrisCorners(img, 20);
+			if (features.empty())
 			{
-				cout << "Failed to find DoH features in image " << imageName << endl;
-				return 0;
+				cout << "No features were found in " << image.filename << endl;
 			}
-			std::cout << features.size() << " features found in image " << imageName << std::endl;
-
-#ifdef DEBUG
-			Mat img_i = imread(imagePath, IMREAD_GRAYSCALE);
-			for (auto& f : features)
-			{
-				circle(img_i, f.p, 3, (255, 255, 0), -1);
-			}
-
-			// Display
-			imshow("Image - best features", img_i);
-			waitKey(0);
-#endif
 
 			// Create descriptors for each feature in the image
 			std::vector<FeatureDescriptor> descriptors;
 			if (!CreateSIFTDescriptors(img, features, descriptors))
 			{
-				cout << "Failed to create feature descriptors for image " << imageName << endl;
-				return 0;
+				cout << "Failed to create feature descriptors for image " << image.filename << endl;
+				continue;
 			}
 
-			cout << "Image descriptor created for image " << imageName << endl;
-			ImageDescriptor i;
-			i.filename = imageName;
-			i.features = features;
-			// Need to decompose K into K and E = [R|t]. 
-			// This E is different to the E later on, which is between two cameras, not per-camera
-			DecomposeProjectiveMatrixIntoKAndE(calibrationMatrices[idx], i.K, i.E);
-			//#pragma omp critical
-			images.push_back(i);
-			
+			image.features = features;
 		}
-		*/
 	}
 	// If opted, check for a features file
 	if (featureFileGiven && !featuresRead)
@@ -310,162 +278,120 @@ int main(int argc, char** argv)
 		}
 	}
 
-	// Run over each possible pair of images and count how many features they have in common. If more
-	// than some minimum threshold, say 30, compute the fundamental matrix for these two images
-	vector<StereoPair> pairs;
 	// THis should be stored in a 2D matrix where the index in the matrix corresponds to array index
 	// and the array holds the fundamental matrix
 	int s = (int)images.size();
-	StereoPair** matrices = new StereoPair * [s];
-	for (int k = 0; k < s; ++k)
+	StereoPair pair;
+	cout << "Matching features for " << images[i].filename << " and " << images[j].filename << endl;
+	std::vector<std::pair<Feature, Feature>> matches = MatchDescriptors(images[i].features, images[j].features);
+
+
+#ifdef DEBUG_MATCHES
+	// Draw matching features
+	Mat matchImageScored;
+	Mat img_i = imread(imageFolder + "\\" + images[i].filename, IMREAD_GRAYSCALE);
+	Mat img_j = imread(imageFolder + "\\" + images[j].filename, IMREAD_GRAYSCALE);
+	hconcat(img_i, img_j, matchImageScored);
+	int offset = img_i.cols;
+	// Draw the features on the image
+	for (unsigned int i = 0; i < matches.size(); ++i)
 	{
-		matrices[k] = new StereoPair[s];
-		for (int l = 0; l < s; ++l)
-		{
-			StereoPair p;
-			p.F.setZero();
-			matrices[k][l] = p;
-			p.img1.filename = "";
-		}
+		Feature f1 = matches[i].first;
+		Feature f2 = matches[i].second;
+		f2.p.x += offset;
+
+		circle(matchImageScored, f1.p, 2, (255, 255, 0), -1);
+		circle(matchImageScored, f2.p, 2, (255, 255, 0), -1);
+		line(matchImageScored, f1.p, f2.p, (0, 255, 255), 2, 8, 0);
 	}
-	for (int i = 0; i < s; ++i)
-	{
-		for (int j = i + 1; j < s; ++j)
-		{
-			cout << "Matching features for " << images[i].filename << " and " << images[j].filename << endl;
-			std::vector<std::pair<Feature, Feature>> matches = MatchDescriptors(images[i].features, images[j].features);
-
-			if (matches.size() < STEREO_OVERLAP_THRESHOLD)
-			{
-				cout << matches.size() << " features - not enough overlap between " << images[i].filename << " and " << images[j].filename << endl;
-				continue;
-			}
-			cout << matches.size() << " features found between " << images[i].filename << " and " << images[j].filename << endl;
-
-			// Compute Fundamental matrix
-			Matrix3f fundamentalMatrix;
-			if (!FindFundamentalMatrix(matches, fundamentalMatrix))
-			{
-				cout << "Failed to find fundamental matrix for pair " << images[i].filename << " and " << images[j].filename << endl;
-				continue;
-			}
-
-			cout << "Fundamental matrix found for pair " << images[i].filename << " and " << images[j].filename << endl;
-
-  			matrices[i][j].img1 = images[i];
-			matrices[i][j].img2 = images[j];
-			matrices[i][j].F = fundamentalMatrix;
-			// These K's need to just be the camera matrices
-			// Now compute the Essential matrix
-			matrices[i][j].E = images[j].K.transpose() * fundamentalMatrix * images[i].K;
-
-#ifdef DEBUG_FUNDAMENTAL
-			// How do I verify that this is the fundamental matrix?
-			// Surely it should transform matching feature points into each other?
-			// It transforms points into lines. So we can transform one image's point into
-			// a line in the other image, and then verify that the feature is on that line
-			// But we can also use the epipolar constraint to check
-			// verify the epipolar cinstraint
-			// This seems to be working. Each match has a pixel error of <5
-			for (auto& m : matches)
-			{
-				auto f = Vector3f(m.first.p.x, m.first.p.y, 1);
-				auto fprime = Vector3f(m.second.p.x, m.second.p.y, 1);
-
-				auto result = fprime.transpose() * fundamentalMatrix * f;
-				cout << result << endl << endl;
-			}
+	// Debug display
+	imshow("matches", matchImageScored);
+	waitKey(0);
 #endif
 
-			// Now perform triangulation on each of those points to get the depth
-			// TODO: figure out structure here
-			// Need to find the depth of each point. Not just feature points, but every point. 
-			// But for that, we need to match pixels. 
-			// Perhaps for that we need the homography. 
-			// So that for each pixel location we transform that into the other camera, and then find the closest
-			// discrete pixel. 
-			// Lindstrom's triangulation assumes pixels are square; we do too, even though this is false
-			// we could stretch the image or just see what happens
-			// We'll get a homography between the images to get matching pixels. 
-			// Then for each pixel in image A, we project it into image B and get the closest point
-			// use these two points for the triangulation to create the depth map
+	if (matches.size() < STEREO_OVERLAP_THRESHOLD)
+	{
+		cout << matches.size() << " features - not enough overlap between " << images[i].filename << " and " << images[j].filename << endl;
+	}
+	cout << matches.size() << " features found between " << images[i].filename << " and " << images[j].filename << endl;
 
-			// Not sure we need any of the below. Starting with just triangulating the features that we have
-			// For all features that these images share, compute the depth of each feature with respect to the ith
-			// camera. This can easily be transformed into the jth coordinate frame, as we have the essential matrix
-			// From Lindstrom's paper, copying notation, we have that
-			// xEx' = 0
-			// and we follow this convention, where m.first is x', and m.second is x
+	// Compute Fundamental matrix
+	Matrix3f fundamentalMatrix;
+	if (!FindFundamentalMatrix(matches, fundamentalMatrix))
+	{
+		cout << "Failed to find fundamental matrix for pair " << images[i].filename << " and " << images[j].filename << endl;
+	}
 
-			// Display
-			namedWindow("Image first", WINDOW_AUTOSIZE);
-			namedWindow("Image second", WINDOW_AUTOSIZE);
-			Mat img_i = imread(imageFolder + "\\" + images[i].filename, IMREAD_GRAYSCALE);
-			Mat img_j = imread(imageFolder + "\\" + images[j].filename, IMREAD_GRAYSCALE);
-			for (auto& match : matches)
+	cout << "Fundamental matrix found for pair " << images[i].filename << " and " << images[j].filename << endl;
+
+  	//matrices[i][j].img1 = images[i];
+	//matrices[i][j].img2 = images[j];
+	//matrices[i][j].F = fundamentalMatrix;
+	// These K's need to just be the camera matrices
+	// Now compute the Essential matrix
+	//matrices[i][j].E = images[j].K.transpose() * fundamentalMatrix * images[i].K;
+
+#ifdef DEBUG_FUNDAMENTAL
+	// How do I verify that this is the fundamental matrix?
+	// Surely it should transform matching feature points into each other?
+	// It transforms points into lines. So we can transform one image's point into
+	// a line in the other image, and then verify that the feature is on that line
+	// But we can also use the epipolar constraint to check
+	// verify the epipolar cinstraint
+	// This seems to be working. Each match has a pixel error of <5
+	for (auto& m : matches)
+	{
+		auto f = Vector3f(m.first.p.x, m.first.p.y, 1);
+		auto fprime = Vector3f(m.second.p.x, m.second.p.y, 1);
+
+		auto result = fprime.transpose() * fundamentalMatrix * f;
+		cout << result << endl << endl;
+	}
+#endif
+
+		
+
+	for (auto& match : matches)
+	{
+		// TODO: triangulation isn't working. 
+		// or it gives negative depth
+		// Theory 1: mathematics is wrong somehow, not sure where
+		// Can show this in OpenGL to debug easier?
+
+		Point2f xprime = match.first.p;
+		Point2f x = match.second.p;
+		float d0 = 0;
+		float d1 = 0;
+		Matrix3f E;
+		if (!Triangulate(d0, d1, x, xprime, E))
+		{
+			match.first.depth = BAD_DEPTH;
+			match.second.depth = BAD_DEPTH;
+			continue;
+		}
+
+		// Is this depth in first frame or second frame?
+		match.first.depth = d0;
+		match.second.depth = d1;// transform the point in 3D from first camera to second camera
+
+		// Transform points into each camera frame
+
+		// Copy the depths to the StereoPair array
+		for (auto& f : images[i].features)
+		{
+			if (f == match.first)
 			{
-				circle(img_i, match.first.p, 2, (255, 255, 0), -1);
-
-				circle(img_j, match.second.p, 2, (255, 255, 0), -1);
+				f.depth = match.first.depth;
 			}
-			imshow("Image first", img_i);
-			imshow("Image second", img_j);
-			waitKey(0);
-
-			for (auto& match : matches)
+		}
+		for (auto& f : images[j].features)
+		{
+			if (f == match.second)
 			{
-				// TODO: triangulation isn't working. 
-				// or it gives negative depth
-				// Theory 1: mathematics is wrong somehow, not sure where
-				// Can show this in OpenGL to debug easier?
-
-				Point2f xprime = match.first.p;
-				Point2f x = match.second.p;
-				float d0 = 0;
-				float d1 = 0;
-				if (!Triangulate(d0, d1, x, xprime, matrices[i][j].E))
-				{
-					match.first.depth = BAD_DEPTH;
-					match.second.depth = BAD_DEPTH;
-					continue;
-				}
-
-				// Is this depth in first frame or second frame?
-				match.first.depth = d0;
-				match.second.depth = d1;// transform the point in 3D from first camera to second camera
-
-				// Transform points into each camera frame
-				
-				// Copy the depths to the StereoPair array
-				for (auto& f : images[i].features)
-				{
-					if (f == match.first)
-					{
-						f.depth = match.first.depth;
-					}
-				}
-				for (auto& f : images[j].features)
-				{
-					if (f == match.second)
-					{
-						f.depth = match.second.depth;
-					}
-				}
+				f.depth = match.second.depth;
 			}
 		}
 	}
-
-	// Find covisibility of points to get all points in the one frame
-	// for each camera
-	//	find the chain of transforms to C0 - shortest path
-	// 
-	// 
-	// We've already stored immediate covisibility
-	// Now just need to go over that further, but just for C0. 
-	// So, a breadth-first. 
-	// For all covisible frames of C0, what is covisible that hasn't already been touched?
-	// Then push those on, repeat.
-	// Each time, store a rolling transform to C0
 	
 
 	// Render points
@@ -477,7 +403,7 @@ int main(int argc, char** argv)
 	vector<Vector3f> pointsToDraw;
 	for (int i = 0; i < s; ++i)
 	{
-		StereoPair p = matrices[0][i];
+		StereoPair p;// = matrices[0][i];
 
 		// So every point should be in the frame of C0, and this will have
 		// all the points covisible to it

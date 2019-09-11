@@ -32,9 +32,9 @@
 #define NN_RATIO 0.7
 
 // DOH constants
-#define DOH_WINDOW 7
-#define SCALE_SPACE_ITERATIONS 7
-#define DOH_THRESHOLD 500000.0
+#define DOH_WINDOW 11
+#define SCALE_SPACE_ITERATIONS 11
+#define DOH_THRESHOLD 10000000.0
 
 
 #define PI 3.14159f

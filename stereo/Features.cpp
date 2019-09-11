@@ -46,7 +46,7 @@ void CreateGaussianKernel(Mat& img, float sigma)
 	since this is the most time consuming part of the feature extraction
 */
 vector<Feature> ClusterFeatures(vector<Feature>& features, const int windowSize)
-{
+{ 
 	vector<Feature> temp;
 	for (unsigned int n = 0; n < features.size(); ++n)
 	{
@@ -1022,6 +1022,12 @@ std::vector<std::pair<Feature, Feature> > MatchDescriptors(std::vector<Feature> 
 			continue;
 		}
 
+		// To match, scores must also be sufficiently similar
+		if (abs(f.score - list2[closest].score) > 2000000000000000)
+		{
+			continue;
+		}
+
 		// Lowe ratio test
 		float distClosest = minDist;
 		float distSecondClosest = DistanceBetweenDescriptors(f.desc, list2[secondClosest].desc);
@@ -1118,10 +1124,8 @@ void GetImageDescriptorsForFile(
 	const std::vector<Eigen::MatrixXf>& calibrationMatrices,
 	const Mat& mask)
 {
-#pragma omp parallel num_threads(24)
+#pragma omp parallel
 	{
-		// Will this create a separate imageDesciptor per thread?
-
 #pragma omp for 
 		for (int idx = 0; idx < filenames.size(); idx++)
 		{
@@ -1130,18 +1134,6 @@ void GetImageDescriptorsForFile(
 #pragma omp critical
 			images.push_back(i);
 		}
-	}
-
-	// TODO: 
-	// This isn't adding to the vector in a threadsafe way
-	// the image descriptor is overwritten each time
-	// and only 16 get pushed back
-
-
-	// Verify that images has all the dsecriptors?
-	if (images.size() == 0)
-	{
-		cout << "this failed" << endl;
 	}
 }
 
