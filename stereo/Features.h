@@ -12,13 +12,14 @@
 // Parameters to tune
 #define FAST_THRESHOLD 30
 #define ST_THRESH 10000.f
-#define HARRIS_THRESH 10000.f
+#define HARRIS_THRESH 100000000.f
 #define NMS_WINDOW 2
 #define MAX_NUM_FEATURES 100
 #define MATCH_THRESHOLD 0.1f
 
 // Other parameters
 #define HARRIS_WINDOW 5
+#define SCALE_PYRAMID_LEVELS 4
 #define HARRIS_CONSTANT 0.05f //https://courses.cs.washington.edu/courses/cse576/06sp/notes/HarrisDetector.pdf
 #define ST_WINDOW 3
 #define FAST_SPACING 3
@@ -164,7 +165,7 @@ bool FindDoHFeatures(cv::Mat input, cv::Mat mask, std::vector<Feature>& features
 
 std::vector<Feature> ClusterFeatures(std::vector<Feature>& features, const int windowSize);
 
-std::vector<Feature> FindHarrisCorners(const cv::Mat& img, int nmsWindowSize);
+std::vector<Feature> FindHarrisCorners(const cv::Mat& input, int nmsWindowSize);
 
 std::vector<Feature> ScoreAndClusterFeatures(cv::Mat img, std::vector<Feature>& features);
 

@@ -96,76 +96,100 @@ vector<Feature> ClusterFeatures(vector<Feature>& features, const int windowSize)
 // Support functions
 
 // Actual function
-vector<Feature> FindHarrisCorners(const Mat& img, int nmsWindowSize)
+vector<Feature> FindHarrisCorners(const Mat& input, int nmsWindowSize)
 {
 	vector<Feature> features;
+	Mat img = input.clone();
 
-	// Compute image gradient
-	Mat sobel;
-	GaussianBlur(img, sobel, Size(HARRIS_WINDOW, HARRIS_WINDOW), 1, 1, BORDER_DEFAULT);
-	Mat grad_x, grad_y;
-	int scale = 1;
-	int delta = 0;
-	int ddepth = CV_8U;
-	Sobel(sobel, grad_x, ddepth, 1, 0, HARRIS_WINDOW, scale, delta, BORDER_DEFAULT);
-	Sobel(sobel, grad_y, ddepth, 0, 1, HARRIS_WINDOW, scale, delta, BORDER_DEFAULT);
-	// We have our x and y gradients
-	// Now with our window size, go over the image
-
-	// Get gaussian kernel for weighting the gradients within the window
-	Mat gaussKernel = Mat(HARRIS_WINDOW, HARRIS_WINDOW, CV_32F, 1);
-	for (int i = 0; i < HARRIS_WINDOW; ++i) for (int j = 0; j < HARRIS_WINDOW; ++j) gaussKernel.at<float>(i, j) = 1;
-	GaussianBlur(gaussKernel, gaussKernel, Size(HARRIS_WINDOW, HARRIS_WINDOW), 1, 1, BORDER_DEFAULT);
-
-	int width = img.cols;
-	int height = img.rows;
-	std::vector<Feature> goodFeatures;
-	float avgEigen = 0.f;
-	
-	// Loop over all pixels in the image, and check for Harris corners
-	// Except this is hideously expensive, so I'm going to skip every second pixel
-	for (int y = HARRIS_WINDOW / 2 + 1; y < img.rows -  HARRIS_WINDOW / 2; y += 2)
+	// Get features over a scale pyramid
+	// each level of the pyramid, we halve the size of the image
+	// This is done 4 times
+	for (int s = 1; s < SCALE_PYRAMID_LEVELS; ++s)
 	{
-		for (int x = HARRIS_WINDOW / 2 + 1; x < img.cols - HARRIS_WINDOW / 2; x += 2)
+		// Halve the image size
+		Mat dst;
+		resize(img, dst, Size(), 0.5, 0.5, CV_INTER_LINEAR);
+		img = dst;
+
+		// Now get features
+		// Compute image gradient
+		Mat sobel;
+		GaussianBlur(img, sobel, Size(HARRIS_WINDOW, HARRIS_WINDOW), 1, 1, BORDER_DEFAULT);
+		Mat grad_x, grad_y;
+		int scale = 1;
+		int delta = 0;
+		int ddepth = CV_8U;
+		Sobel(sobel, grad_x, ddepth, 1, 0, HARRIS_WINDOW, scale, delta, BORDER_DEFAULT);
+		Sobel(sobel, grad_y, ddepth, 0, 1, HARRIS_WINDOW, scale, delta, BORDER_DEFAULT);
+		// We have our x and y gradients
+		// Now with our window size, go over the image
+
+		// Get gaussian kernel for weighting the gradients within the window
+		Mat gaussKernel = Mat(HARRIS_WINDOW, HARRIS_WINDOW, CV_32F, 1);
+		CreateGaussianKernel(gaussKernel, 1);
+
+		int width = img.cols;
+		int height = img.rows;
+		std::vector<Feature> goodFeatures;
+		float avgEigen = 0.f;
+
+		// Loop over all pixels in the image, and check for Harris corners
+		// Except this is hideously expensive, so I'm going to skip every second pixel
+		for (int y = HARRIS_WINDOW / 2 + 1; y < img.rows - HARRIS_WINDOW / 2; y += 2)
 		{
-			int winSize = HARRIS_WINDOW / 2;
-			Mat M = Mat::zeros(2, 2, CV_32F);
-			// Go through the window around the point
-			// Accumulate M weighted by the kernel
-			// This is the gradient at the point that we will use. 
-			// We use an accumulated gradient rather than a pointwise gradient since we are 
-			// approximating the gradient of a "smooth" function that we only know at certain points.
-			for (int n = -(HARRIS_WINDOW / 2); n <= HARRIS_WINDOW / 2; ++n)
+			for (int x = HARRIS_WINDOW / 2 + 1; x < img.cols - HARRIS_WINDOW / 2; x += 2)
 			{
-				for (int m = -(HARRIS_WINDOW / 2); m <= (HARRIS_WINDOW / 2); ++m)
+				int winSize = HARRIS_WINDOW / 2;
+				Mat M = Mat::zeros(2, 2, CV_32F);
+				// Go through the window around the point
+				// Accumulate M weighted by the kernel
+				// This is the gradient at the point that we will use. 
+				// We use an accumulated gradient rather than a pointwise gradient since we are 
+				// approximating the gradient of a "smooth" function that we only know at certain points.
+				for (int n = -(HARRIS_WINDOW / 2); n <= HARRIS_WINDOW / 2; ++n)
 				{
-					int i = n + y;
-					int j = m + x;
-					float w = gaussKernel.at<float>(n + (HARRIS_WINDOW / 2), m + (HARRIS_WINDOW / 2));
-					M.at<float>(0, 0) += w * (float)(grad_x.at<uchar>(i, j) * grad_x.at<uchar>(i, j));
-					M.at<float>(0, 1) += w * (float)(grad_x.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
-					M.at<float>(1, 0) += w * (float)(grad_x.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
-					M.at<float>(1, 1) += w * (float)(grad_y.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
+					for (int m = -(HARRIS_WINDOW / 2); m <= (HARRIS_WINDOW / 2); ++m)
+					{
+						int i = n + y;
+						int j = m + x;
+						float w = gaussKernel.at<float>(n + (HARRIS_WINDOW / 2), m + (HARRIS_WINDOW / 2));
+						M.at<float>(0, 0) += w * (float)(grad_x.at<uchar>(i, j) * grad_x.at<uchar>(i, j));
+						M.at<float>(0, 1) += w * (float)(grad_x.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
+						M.at<float>(1, 0) += w * (float)(grad_x.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
+						M.at<float>(1, 1) += w * (float)(grad_y.at<uchar>(i, j) * grad_y.at<uchar>(i, j));
+					}
+				}
+
+				// Compute the harris score
+				// This is R = det(M) - k * (trace(M))^2
+				float detM = M.at<float>(0, 0) * M.at<float>(1, 1) - M.at<float>(0, 1) * M.at<float>(1, 0);
+				float traceM = M.at<float>(0, 0) + M.at<float>(1, 1);
+				float score = detM - HARRIS_CONSTANT * traceM * traceM;
+
+				// Only keep point that have a score above our threshold
+				if (score > HARRIS_THRESH)
+				{
+					Feature f;
+					f.p.x = (float)x*pow(2, s);
+					f.p.y = (float)y*pow(2, s);
+					f.score = score;
+					f.scale = s;
+					//f.saddle = detM < 0; // if  < 0, one eigenvalue is positive, the other negative
+					features.push_back(f);
 				}
 			}
-
-			// Compute the harris score
-			// This is R = det(M) - k * (trace(M))^2
-			float detM = M.at<float>(0, 0)*M.at<float>(1, 1) - M.at<float>(0, 1)*M.at<float>(1, 0);
-			float traceM = M.at<float>(0, 0) + M.at<float>(1, 1);
-			float score = detM - HARRIS_CONSTANT * traceM*traceM;
-
-			// Only keep point that have a score above our threshold
-			if (score > HARRIS_THRESH)
-			{
-				Feature f;
-				f.p.x = (float)x;
-				f.p.y = (float)y;
-				f.score = score;
-				//f.saddle = detM < 0; // if  < 0, one eigenvalue is positive, the other negative
-				features.push_back(f);
-			}
 		}
+
+		//Mat img_i = imread(img.filename, IMREAD_GRAYSCALE);
+		//Mat disp = img.clone();
+		//for (auto& f : features)
+		//{
+		//	circle(disp, f.p, 3, (255, 255, 0), -1);
+		//}
+
+		// Display
+		//imshow("Image - best features", disp);
+		//waitKey(0);
 	}
 
 	// We apply non-maximal suppression over a greater window area

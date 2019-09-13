@@ -29,7 +29,7 @@ using namespace Eigen;
 #define STEREO_OVERLAP_THRESHOLD 20
 
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
-#define DEBUG_MATCHES
+#define DEBUG_FEATURES
 //#define DEBUG
 
 GLuint buffer = 0;
@@ -109,7 +109,7 @@ inline bool does_file_exist(const std::string& name) {
 int main(int argc, char** argv)
 {
 	/* Some opengl rubbish to test that I have this working */
-	/*glutInit(&argc, argv);
+	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
 	glutInitWindowSize(640, 480);   // Set the window's initial width & height
 	glutInitWindowPosition(50, 50); // Position the window's initial top-left corner
@@ -127,7 +127,7 @@ int main(int argc, char** argv)
 	glShadeModel(GL_SMOOTH);   // Enable smooth shading
 	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Nice perspective corrections
 	// Start the event loop
-	glutMainLoopEvent();*/
+	//glutMainLoopEvent();
 
 
 
@@ -137,7 +137,7 @@ int main(int argc, char** argv)
 		cout << "Usage:" << endl;
 		cout << "stereo.exe <Folder to images> <calibration file> -mask [mask image] -features [Folder to save/load features]" << endl;
 		exit(1);
-
+	}
 	string featurePath = "";
 	bool featureFileGiven = false;
 	Mat maskImage;
@@ -160,71 +160,9 @@ int main(int argc, char** argv)
 	vector<ImageDescriptor> images;
 	// Create an image descriptor for each image file we have
 	string imageFolder = argv[1];
-	auto imageFiles = get_all_files_names_within_folder(imageFolder);
-	for (auto& image : imageFiles)
-	{
-		ImageDescriptor img;
-		img.filename = imageFolder + "\\" + image;
-		images.push_back(img);
-	}
-
-	// Collect the camera matrices
-	// Note that the camera matrices are not necessarily at the centre of their own coordinate system;
-	// they may have encoded some rigid-body transform in there as well?
-	vector<MatrixXf> calibrationMatrices;
-	string calib = argv[2];
-	ifstream calibFile;
-	calibFile.open(calib);
-	if (calibFile.is_open())
-	{
-		string line;
-		while (getline(calibFile, line))
-		{
-			Matrix3f K;
-			replace(line.begin(), line.end(), '[', ' ');
-			replace(line.begin(), line.end(), ']', ' ');
-			// extract the numbers out of the stringstream
-			vector<string> tokens;
-			string token;
-			stringstream stream;
-			stream << line;
-			while (!stream.eof())
-			{
-				stream >> token;
-				tokens.push_back(token);
-			}
-
-			// if line contains cam
-			if (strcmp(tokens[0].c_str(), "cam0") == 0)
-			{
-				// Read calibration and assign to descriptor for image 0
-				
-				
-				for (auto& img : images)
-				{
-					if (img.filename.find("0"))
-					{
-						img.K = K;
-					}
-				}
-			}
-			else if (strcmp(tokens[0].c_str(), "cam1") == 0)
-			{
-				// Read calibration and assign to image 1
-				for (auto& img : images)
-				{
-					if (img.filename.find("0"))
-					{
-						img.K = K;
-					}
-				}
-			}
-		}
-	}
 
 	// We have the option of saving the feature descriptors out to a file
 	// If we have done that, we can pull that in to avoid recomputing features every time
-	vector<ImageDescriptor> images;
 	bool featuresRead = false;
 	if (featureFileGiven)
 	{
@@ -245,6 +183,77 @@ int main(int argc, char** argv)
 	}
 	if (!featuresRead)
 	{
+		auto imageFiles = get_all_files_names_within_folder(imageFolder);
+		for (auto& image : imageFiles)
+		{
+			ImageDescriptor img;
+			img.filename = imageFolder + "\\" + image;
+			images.push_back(img);
+		}
+
+		// Collect the camera matrices
+		// Note that the camera matrices are not necessarily at the centre of their own coordinate system;
+		// they may have encoded some rigid-body transform in there as well?
+		vector<MatrixXf> calibrationMatrices;
+		string calib = argv[2];
+		ifstream calibFile;
+		calibFile.open(calib);
+		if (calibFile.is_open())
+		{
+			string line;
+			while (getline(calibFile, line))
+			{
+				Matrix3f K;
+				replace(line.begin(), line.end(), '[', ' ');
+				replace(line.begin(), line.end(), ']', ' ');
+				replace(line.begin(), line.end(), ';', ' ');
+				// extract the numbers out of the stringstream
+				vector<string> tokens;
+				string token;
+				stringstream stream;
+				stream << line;
+				while (!stream.eof())
+				{
+					stream >> token;
+					tokens.push_back(token);
+				}
+
+				// if line contains cam
+				if (tokens[0].find("cam0") != string::npos)
+				{
+					// Read calibration and assign to descriptor for image 0
+					K << stod(tokens[1], nullptr), stod(tokens[2], nullptr), stod(tokens[3], nullptr),
+						stod(tokens[4], nullptr), stod(tokens[5], nullptr), stod(tokens[6], nullptr),
+						stod(tokens[7], nullptr), stod(tokens[7], nullptr), stod(tokens[9], nullptr);
+
+					for (auto& img : images)
+					{
+						// Yeah, this could be a lot better, I know
+						if (img.filename.find("0") != string::npos)
+						{
+							img.K = K;
+							break;
+						}
+					}
+				}
+				else if (tokens[0].find("cam1") != string::npos)
+				{
+					// Read calibration and assign to image 1
+					K << stod(tokens[1], nullptr), stod(tokens[2], nullptr), stod(tokens[3], nullptr),
+						stod(tokens[4], nullptr), stod(tokens[5], nullptr), stod(tokens[6], nullptr),
+						stod(tokens[7], nullptr), stod(tokens[7], nullptr), stod(tokens[9], nullptr);
+					for (auto& img : images)
+					{
+						if (img.filename.find("1") != string::npos)
+						{
+							img.K = K;
+							break;
+						}
+					}
+				}
+			}
+		}
+
 		for (auto& image : images)
 		{
 			Mat img = imread(image.filename, IMREAD_GRAYSCALE);
@@ -253,6 +262,18 @@ int main(int argc, char** argv)
 			{
 				cout << "No features were found in " << image.filename << endl;
 			}
+
+#ifdef DEBUG_FEATURES
+			Mat img_i = imread(image.filename, IMREAD_GRAYSCALE);
+			for (auto& f : features)
+			{
+				circle(img_i, f.p, 3, (255, 255, 0), -1);
+			}
+
+			// Display
+			imshow("Image - best features", img_i);
+			waitKey(0);
+#endif
 
 			// Create descriptors for each feature in the image
 			std::vector<FeatureDescriptor> descriptors;
@@ -282,15 +303,15 @@ int main(int argc, char** argv)
 	// and the array holds the fundamental matrix
 	int s = (int)images.size();
 	StereoPair pair;
-	cout << "Matching features for " << images[i].filename << " and " << images[j].filename << endl;
-	std::vector<std::pair<Feature, Feature>> matches = MatchDescriptors(images[i].features, images[j].features);
+	cout << "Matching features for " << images[0].filename << " and " << images[1].filename << endl;
+	std::vector<std::pair<Feature, Feature>> matches = MatchDescriptors(images[0].features, images[1].features);
 
 
 #ifdef DEBUG_MATCHES
 	// Draw matching features
 	Mat matchImageScored;
-	Mat img_i = imread(imageFolder + "\\" + images[i].filename, IMREAD_GRAYSCALE);
-	Mat img_j = imread(imageFolder + "\\" + images[j].filename, IMREAD_GRAYSCALE);
+	Mat img_i = imread(imageFolder + "\\" + images[0].filename, IMREAD_GRAYSCALE);
+	Mat img_j = imread(imageFolder + "\\" + images[1].filename, IMREAD_GRAYSCALE);
 	hconcat(img_i, img_j, matchImageScored);
 	int offset = img_i.cols;
 	// Draw the features on the image
@@ -311,25 +332,17 @@ int main(int argc, char** argv)
 
 	if (matches.size() < STEREO_OVERLAP_THRESHOLD)
 	{
-		cout << matches.size() << " features - not enough overlap between " << images[i].filename << " and " << images[j].filename << endl;
+		cout << matches.size() << " features - not enough overlap between " << images[0].filename << " and " << images[1].filename << endl;
 	}
-	cout << matches.size() << " features found between " << images[i].filename << " and " << images[j].filename << endl;
+	cout << matches.size() << " features found between " << images[0].filename << " and " << images[1].filename << endl;
 
 	// Compute Fundamental matrix
 	Matrix3f fundamentalMatrix;
 	if (!FindFundamentalMatrix(matches, fundamentalMatrix))
 	{
-		cout << "Failed to find fundamental matrix for pair " << images[i].filename << " and " << images[j].filename << endl;
+		cout << "Failed to find fundamental matrix for pair " << images[0].filename << " and " << images[1].filename << endl;
 	}
-
-	cout << "Fundamental matrix found for pair " << images[i].filename << " and " << images[j].filename << endl;
-
-  	//matrices[i][j].img1 = images[i];
-	//matrices[i][j].img2 = images[j];
-	//matrices[i][j].F = fundamentalMatrix;
-	// These K's need to just be the camera matrices
-	// Now compute the Essential matrix
-	//matrices[i][j].E = images[j].K.transpose() * fundamentalMatrix * images[i].K;
+	cout << "Fundamental matrix found for pair " << images[0].filename << " and " << images[1].filename << endl;
 
 #ifdef DEBUG_FUNDAMENTAL
 	// How do I verify that this is the fundamental matrix?
@@ -348,22 +361,33 @@ int main(int argc, char** argv)
 		cout << result << endl << endl;
 	}
 #endif
-
 		
+	StereoPair stereo;
+	stereo.F = fundamentalMatrix;
+	stereo.img1 = images[0];
+	stereo.img2 = images[1];
+	// Compute essential matrix
+	stereo.E = stereo.img2.K.transpose() * fundamentalMatrix * stereo.img1.K;
 
 	for (auto& match : matches)
 	{
+		// depth is way the hell off. Fix this anohter time
+
 		// TODO: triangulation isn't working. 
 		// or it gives negative depth
 		// Theory 1: mathematics is wrong somehow, not sure where
 		// Can show this in OpenGL to debug easier?
 
+		// Potential issues:
+		// - coordinate normalisation?
+		// - need to anti-rotate t vector? (doubt it)
+		// - decomposition of E into R and t? This seems weird and too convenient
+
 		Point2f xprime = match.first.p;
 		Point2f x = match.second.p;
 		float d0 = 0;
 		float d1 = 0;
-		Matrix3f E;
-		if (!Triangulate(d0, d1, x, xprime, E))
+		if (!Triangulate(d0, d1, x, xprime, stereo.E))
 		{
 			match.first.depth = BAD_DEPTH;
 			match.second.depth = BAD_DEPTH;
@@ -377,14 +401,14 @@ int main(int argc, char** argv)
 		// Transform points into each camera frame
 
 		// Copy the depths to the StereoPair array
-		for (auto& f : images[i].features)
+		for (auto& f : images[0].features)
 		{
 			if (f == match.first)
 			{
 				f.depth = match.first.depth;
 			}
 		}
-		for (auto& f : images[j].features)
+		for (auto& f : images[1].features)
 		{
 			if (f == match.second)
 			{
@@ -403,27 +427,21 @@ int main(int argc, char** argv)
 	vector<Vector3f> pointsToDraw;
 	for (int i = 0; i < s; ++i)
 	{
-		StereoPair p;// = matrices[0][i];
-
-		// So every point should be in the frame of C0, and this will have
-		// all the points covisible to it
-		if (p.img1.filename.empty())
-			continue;
-
-		// So we definitely have points here. 
-
 		for (auto& f : images[i].features)
 		{
-			Vector3f point;
-			point[0] = f.p.x;
-			point[1] = f.p.y;
-			point[2] = 1;
+			Vector3f projectivePoint;
+			projectivePoint[0] = f.p.x;
+			projectivePoint[1] = f.p.y;
+			projectivePoint[2] = 1;
+			Vector3f point = images[i].K.inverse()*projectivePoint;
+			point = point / point[2];
 			point *= f.depth;
 			pointsToDraw.push_back(point);
 		}
 	}
 	DrawPoints(pointsToDraw);
-	glutMainLoopEvent();
+	//glutMainLoopEvent();
+	glutMainLoop();
 
 	return 0;
 }
@@ -588,7 +606,7 @@ void display()
 	glTranslatef(0.0f, 0.0f, -6.0f);  // Move into the screen to render the points
 
 	// Render the points as cubes
-	//DrawCube(0.5f, 0.f, 1.f, 0.f);
+	DrawCube(0.5f, 0.f, 1.f, 0.f);
 
 	// Render a pyramid consists of 4 triangles
 	glLoadIdentity();                  // Reset the model-view matrix
@@ -611,7 +629,15 @@ void DrawPoints(const vector<Vector3f>& points)
 	// Render the points as cubes
 	for (auto& p : points)
 	{
-		DrawCube(0.5f, p[0], p[1], p[2]);
+		// Probably need to scale these points a wee smidge
+
+		// translate to point
+		//p[0], p[1], p[2]
+		glTranslatef(p[0], p[1], p[2]);
+		// draw tiny cube
+		DrawCube(0.5f, 1.f, 1.f, 0.f);
+		// Now anti-translate, to come back to the same origin
+		glTranslatef(-p[0], -p[1], -p[2]);
 	}
 
 
