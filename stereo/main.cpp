@@ -79,6 +79,8 @@ GLuint program;
 
 */
 void init();
+void initGL();
+void initWithPoints(const std::vector<Vector3f>& points);
 void reshape(int width, int height);
 void display();
 void DrawPoints(const vector<Vector3f>& points);
@@ -105,27 +107,74 @@ inline bool does_file_exist(const std::string& name) {
 	ifstream f(name.c_str());
 	return f.good();
 }
+
+// G
+
 // Main
 int main(int argc, char** argv)
 {
+
+	// TODO:
+	// OpenGL draw test - draw a bunch of things
+
+	// triangulation Unit Tests
+	/*Matrix3f K1;
+	K1 << 1, 0, 0, 0, 1, 0, 0, 0, 1;
+	Matrix3f K2;
+	K2 << 1, 0, 0, 0, 1, 0, 0, 0, 1;
+	Vector3f P(0.5f, 0.f, 0.5f);
+	Matrix3f R;
+	R << -1, 0, 0, 0, 1, 0, 0, 0, -1;
+	Vector3f t(1.f, 0, 0);
+	// Construct E = R * t_skew
+	Matrix3f t_skew;
+	t_skew << 0, 0, 0, 0, 0, -1, 0, 1, 0;
+	Matrix3f E = R * t_skew;
+	Point2f x(1.f, 0);
+	Point2f xprime(-1.f, 0);
+	float d0, d1;
+	if (Triangulate(d0, d1, x, xprime, E))
+	{
+		cout << "Succeeded: d0 = " << d0 << "\td1 = " << d1 << endl;
+	}
+	else
+	{
+		cout << "Failed?" << endl;
+	}
+
+
+	return 0;*/
+	std::vector<Vector3f> points;
+	points.push_back(Vector3f(-0.75f,-0.5f,0.f));
+	points.push_back(Vector3f(0.75f,-0.5f,0.f));
+	points.push_back(Vector3f(0,0.75f,0.f));
+	//{-0.75, -0.5, 0.0, 1.0},
+	//	{0.75, -0.5, 0.0, 1.0},
+	//	{0.0, 0.75, 0.0, 1.0}
+
 	/* Some opengl rubbish to test that I have this working */
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
 	glutInitWindowSize(640, 480);   // Set the window's initial width & height
 	glutInitWindowPosition(50, 50); // Position the window's initial top-left corner
 	glutCreateWindow("Point Cloud");          // Create window with the given title
-
+	glewInit();
+	initWithPoints(points);
 	// Register the display callback function
 	glutDisplayFunc(display);
 
 	// Register the reshape callback function
 	glutReshapeFunc(reshape);
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Set background color to black and opaque
-	glClearDepth(1.0f);                   // Set background depth to farthest
-	glEnable(GL_DEPTH_TEST);   // Enable depth testing for z-culling
-	glDepthFunc(GL_LEQUAL);    // Set the type of depth-test
-	glShadeModel(GL_SMOOTH);   // Enable smooth shading
-	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Nice perspective corrections
+	//glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Set background color to black and opaque
+	//glClearDepth(1.0f);                   // Set background depth to farthest
+	//glEnable(GL_DEPTH_TEST);   // Enable depth testing for z-culling
+	//glDepthFunc(GL_LEQUAL);    // Set the type of depth-test
+	//glShadeModel(GL_SMOOTH);   // Enable smooth shading
+	//glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Nice perspective corrections
+
+	
+	//DrawPoints(points);
+	glutMainLoop();
 	// Start the event loop
 	//glutMainLoopEvent();
 
@@ -283,6 +332,8 @@ int main(int argc, char** argv)
 				continue;
 			}
 
+			image.width = img.cols;
+			image.height = img.rows;
 			image.features = features;
 		}
 	}
@@ -385,6 +436,11 @@ int main(int argc, char** argv)
 
 		Point2f xprime = match.first.p;
 		Point2f x = match.second.p;
+		// Put each of these into uv coords
+		xprime.x /= stereo.img1.width;
+		xprime.y /= stereo.img1.height;
+		x.x /= stereo.img2.width;
+		x.y /= stereo.img2.height;
 		float d0 = 0;
 		float d1 = 0;
 		if (!Triangulate(d0, d1, x, xprime, stereo.E))
@@ -429,6 +485,12 @@ int main(int argc, char** argv)
 	{
 		for (auto& f : images[i].features)
 		{
+			if (abs(f.depth) > 1000)
+			{
+				// remove nonsense
+				continue;
+			}
+
 			Vector3f projectivePoint;
 			projectivePoint[0] = f.p.x;
 			projectivePoint[1] = f.p.y;
@@ -439,9 +501,9 @@ int main(int argc, char** argv)
 			pointsToDraw.push_back(point);
 		}
 	}
-	DrawPoints(pointsToDraw);
+	//DrawPoints(pointsToDraw);
 	//glutMainLoopEvent();
-	glutMainLoop();
+	//glutMainLoop();
 
 	return 0;
 }
@@ -504,7 +566,86 @@ void DrawCube(const float& scale, const float& r, const float& g, const float& b
 	glEnd();  // End of drawing color-cube
 }
 
+void initWithPoints(const std::vector<Vector3f>& points)
+{
+	GLfloat* vertices = (GLfloat*)malloc(sizeof(GLfloat*)*points.size()*4);
+	for (size_t i = 0; i < points.size(); ++i)
+	{
+		vertices[4*i] = points[i][0];
+		vertices[4*i+1] = points[i][1];
+		vertices[4*i+2] = points[i][2];
+		vertices[4*i+3] = 1;
+	}
 
+	// Three vertexes that define a triangle. 
+	/*GLfloat vertices[][4] = {
+		{-0.75, -0.5, 0.0, 1.0},
+		{0.75, -0.5, 0.0, 1.0},
+		{0.0, 0.75, 0.0, 1.0}
+	};*/
+
+	// Get an unused buffer object name. Required after OpenGL 3.1. 
+	glGenBuffers(1, &buffer);
+
+	// If it's the first time the buffer object name is used, create that buffer. 
+	glBindBuffer(GL_ARRAY_BUFFER, buffer);
+
+	// Allocate memory for the active buffer object. 
+	// 1. Allocate memory on the graphics card for the amount specified by the 2nd parameter.
+	// 2. Copy the data referenced by the third parameter (a pointer) from the main memory to the 
+	//    memory on the graphics card. 
+	// 3. If you want to dynamically load the data, then set the third parameter to be NULL. 
+	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*4*points.size(), vertices, GL_STATIC_DRAW);
+
+	// OpenGL vertex shader source code
+	const char* vSource = {
+		"#version 330\n"
+		"in vec4 vPos;"
+		"void main() {"
+		"	gl_Position = vPos * vec4(1.0f, 1.0f, 1.0f, 1.0f);"
+		"}"
+	};
+
+	// OpenGL fragment shader source code
+	const char* fSource = {
+		"#version 330\n"
+		"out vec4 fragColor;"
+		"void main() {"
+		"	fragColor = vec4(0.8, 0.8, 0, 1);"
+		"}"
+	};
+
+	// Declare shader IDs
+	GLuint vShader, fShader;
+
+	// Create empty shader objects
+	vShader = glCreateShader(GL_VERTEX_SHADER);
+	fShader = glCreateShader(GL_FRAGMENT_SHADER);
+
+	// Attach shader source code the shader objects
+	glShaderSource(vShader, 1, &vSource, NULL);
+	glShaderSource(fShader, 1, &fSource, NULL);
+
+	// Compile shader objects
+	glCompileShader(vShader);
+	glCompileShader(fShader);
+
+	// Create an empty shader program object
+	program = glCreateProgram();
+
+	// Attach vertex and fragment shaders to the shader program
+	glAttachShader(program, vShader);
+	glAttachShader(program, fShader);
+
+	// Link the shader program
+	glLinkProgram(program);
+
+	// Retrieve the ID of a vertex attribute, i.e. position
+	vPos = glGetAttribLocation(program, "vPos");
+
+	// Specify the background color
+	glClearColor(0, 0, 0, 1);
+}
 
 void init()
 {
@@ -599,17 +740,21 @@ void display()
 	// Clear the window with the background color
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear color and depth buffers
-	glMatrixMode(GL_MODELVIEW);     // To operate on model-view matrix
+	// Activate the shader program
+	glUseProgram(program);
 
-	glLoadIdentity();                 // Reset the model-view matrix
-	glTranslatef(0.0f, 0.0f, -6.0f);  // Move into the screen to render the points
+	// If the buffer object already exists, make that buffer the current active one. 
+	// If the buffer object name is 0, disable buffer objects. 
+	glBindBuffer(GL_ARRAY_BUFFER, buffer);
 
-	// Render the points as cubes
-	DrawCube(0.5f, 0.f, 1.f, 0.f);
+	// Associate the vertex array in the buffer object with the vertex attribute: "position"
+	glVertexAttribPointer(vPos, 4, GL_FLOAT, GL_FALSE, 0, BUFFER_OFFSET(0));
 
-	// Render a pyramid consists of 4 triangles
-	glLoadIdentity();                  // Reset the model-view matrix
+	// Enable the vertex attribute: "position"
+	glEnableVertexAttribArray(vPos);
+
+	// Start the shader program
+	glDrawArrays(GL_POINTS, 0, 2);
 
 	// Refresh the window
 	glutSwapBuffers();
@@ -618,16 +763,26 @@ void display()
 void DrawPoints(const vector<Vector3f>& points)
 {
 	// Clear the window with the background color
-	glClear(GL_COLOR_BUFFER_BIT);
-
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear color and depth buffers
 	glMatrixMode(GL_MODELVIEW);     // To operate on model-view matrix
 
 	glLoadIdentity();                 // Reset the model-view matrix
-	glTranslatef(0.0f, 0.0f, -6.0f);  // Move into the screen to render the points
+	//glTranslatef(0.0f, 0.0f, -6.0f);  // Move into the screen to render the points
+
+	glPushMatrix();
+	glBegin(GL_POINTS);
+		glColor3f(0.f, 1.f, 0.f);
+		
+		for (auto& p : points)
+		{
+			glVertex3f(p[0], p[1], p[2]);
+		}
+
+	glEnd();
+	glPopMatrix();
 
 	// Render the points as cubes
-	for (auto& p : points)
+	/*for (auto& p : points)
 	{
 		// Probably need to scale these points a wee smidge
 
@@ -635,10 +790,10 @@ void DrawPoints(const vector<Vector3f>& points)
 		//p[0], p[1], p[2]
 		glTranslatef(p[0], p[1], p[2]);
 		// draw tiny cube
-		DrawCube(0.5f, 1.f, 1.f, 0.f);
+		DrawCube(0.2f, 1.f, 1.f, 0.f);
 		// Now anti-translate, to come back to the same origin
 		glTranslatef(-p[0], -p[1], -p[2]);
-	}
+	}*/
 
 
 	//DrawCube(0.5f, 0.f, 1.f, 0.f);
@@ -650,5 +805,12 @@ void DrawPoints(const vector<Vector3f>& points)
 	glutSwapBuffers();
 }
 
-
+void initGL() {
+   glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Set background color to black and opaque
+   glClearDepth(1.0f);                   // Set background depth to farthest
+   glEnable(GL_DEPTH_TEST);   // Enable depth testing for z-culling
+   glDepthFunc(GL_LEQUAL);    // Set the type of depth-test
+   glShadeModel(GL_SMOOTH);   // Enable smooth shading
+   glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Nice perspective corrections
+}
 

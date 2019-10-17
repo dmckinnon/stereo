@@ -84,6 +84,8 @@ struct Feature
 
 struct ImageDescriptor
 {
+	int width;
+	int height;
 	std::vector<Feature> features;
 	std::string filename;
 	Eigen::Matrix3f K;
@@ -91,7 +93,7 @@ struct ImageDescriptor
 
 	friend std::ostream& operator << (std::ostream& os, const ImageDescriptor& i)
 	{
-		os << i.filename << std::endl;
+		os << i.filename << " " << i.width << " " << i.height << std::endl;
 		for (int k = 0; k < 3; ++k)
 		{
 			for (int j = 0; j < 3; ++j)
@@ -115,6 +117,8 @@ struct ImageDescriptor
 	{
 		size_t numFeatures = 0;
 		is >> i.filename;
+		is >> i.width;
+		is >> i.height;
 		
 		for (int k = 0; k < 3; ++k)
 		{

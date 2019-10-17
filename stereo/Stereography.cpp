@@ -237,11 +237,28 @@ bool Triangulate(float& depth0, float& depth1, Point2f& x, Point2f& xprime, cons
 	float d = v.dot(t);
 	float e = v.dot(v);
 
-	if (fabs(c * c - b * e) < 1e-9) return false;
-	if (fabs(c) < 1e-9) return false;
+	float g = c * c - b * e;
+	if (fabs(g) < 1e-9) return false;
+	//{
+		// do this the other way
+		// turns out this doesn't work. 
+		// This gets degenerate solutions when the epipolar lines are parallel
+		// Need to compute an example with some rotation 
+	//}
+	float d0 = 0;
+	float d1 = 0;
+	if (fabs(c) < 1e-9)// return false;
+	{
+		d1 = (a * c - b * d) / (c * c - b * e);
+		d0 = (c * d1 - a) / b;
+	}
+	else
+	{
+		d0 = (a * e - c * d) / (c * c - b * e);
+		d1 = (a + b * d0) / c;
+	}
 
-	float d0 = (a * e - c * d) / (c * c - b * e);
-	float d1 = (a + b * d0) / c;
+	
 
 	Vector3f xyz0 = t + d0 * u;
 	Vector3f xyz1 = d1 * v;
@@ -251,6 +268,7 @@ bool Triangulate(float& depth0, float& depth1, Point2f& x, Point2f& xprime, cons
 	depth0 = d0;
 	depth1 = d1;
 	// It's worth noting that we compute the final 3d point, and the distance in both cameras
+	// Depth is negative?
 
 	return true;
 }
