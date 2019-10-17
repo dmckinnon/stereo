@@ -36,6 +36,8 @@ GLuint buffer = 0;
 GLuint vPos;
 GLuint program;
 
+GLuint numPoints = 0;
+
 /*
 	This is an exercise in stereo depth-maps and reconstruction (stretch goal)
 	See README for more detail
@@ -144,39 +146,7 @@ int main(int argc, char** argv)
 
 
 	return 0;*/
-	std::vector<Vector3f> points;
-	points.push_back(Vector3f(-0.75f,-0.5f,0.f));
-	points.push_back(Vector3f(0.75f,-0.5f,0.f));
-	points.push_back(Vector3f(0,0.75f,0.f));
-	//{-0.75, -0.5, 0.0, 1.0},
-	//	{0.75, -0.5, 0.0, 1.0},
-	//	{0.0, 0.75, 0.0, 1.0}
-
-	/* Some opengl rubbish to test that I have this working */
-	glutInit(&argc, argv);
-	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
-	glutInitWindowSize(640, 480);   // Set the window's initial width & height
-	glutInitWindowPosition(50, 50); // Position the window's initial top-left corner
-	glutCreateWindow("Point Cloud");          // Create window with the given title
-	glewInit();
-	initWithPoints(points);
-	// Register the display callback function
-	glutDisplayFunc(display);
-
-	// Register the reshape callback function
-	glutReshapeFunc(reshape);
-	//glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Set background color to black and opaque
-	//glClearDepth(1.0f);                   // Set background depth to farthest
-	//glEnable(GL_DEPTH_TEST);   // Enable depth testing for z-culling
-	//glDepthFunc(GL_LEQUAL);    // Set the type of depth-test
-	//glShadeModel(GL_SMOOTH);   // Enable smooth shading
-	//glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Nice perspective corrections
-
 	
-	//DrawPoints(points);
-	glutMainLoop();
-	// Start the event loop
-	//glutMainLoopEvent();
 
 
 
@@ -505,6 +475,32 @@ int main(int argc, char** argv)
 	//glutMainLoopEvent();
 	//glutMainLoop();
 
+	//std::vector<Vector3f> points;
+	pointsToDraw.push_back(Vector3f(-0.75f,-0.5f,0.f));
+	pointsToDraw.push_back(Vector3f(0.75f,-0.5f,0.f));
+	pointsToDraw.push_back(Vector3f(0,0.75f,0.f));
+	//{-0.75, -0.5, 0.0, 1.0},
+	//	{0.75, -0.5, 0.0, 1.0},
+	//	{0.0, 0.75, 0.0, 1.0}
+
+	/* Some opengl rubbish to test that I have this working */
+	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
+	glutInitWindowSize(640, 480);   // Set the window's initial width & height
+	glutInitWindowPosition(50, 50); // Position the window's initial top-left corner
+	glutCreateWindow("Point Cloud");          // Create window with the given title
+	glewInit();
+	initWithPoints(pointsToDraw);
+	// Register the display callback function
+	glutDisplayFunc(display);
+
+	// Register the reshape callback function
+	glutReshapeFunc(reshape);
+
+	glutMainLoop();
+	// Start the event loop
+
+
 	return 0;
 }
 
@@ -576,6 +572,7 @@ void initWithPoints(const std::vector<Vector3f>& points)
 		vertices[4*i+2] = points[i][2];
 		vertices[4*i+3] = 1;
 	}
+	numPoints = points.size();
 
 	// Three vertexes that define a triangle. 
 	/*GLfloat vertices[][4] = {
@@ -754,7 +751,7 @@ void display()
 	glEnableVertexAttribArray(vPos);
 
 	// Start the shader program
-	glDrawArrays(GL_POINTS, 0, 2);
+	glDrawArrays(GL_POINTS, 0, numPoints+2);
 
 	// Refresh the window
 	glutSwapBuffers();
