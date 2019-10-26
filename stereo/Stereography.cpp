@@ -258,8 +258,6 @@ bool Triangulate(float& depth0, float& depth1, Point2f& x, Point2f& xprime, cons
 		d1 = (a + b * d0) / c;
 	}
 
-	
-
 	Vector3f xyz0 = t + d0 * u;
 	Vector3f xyz1 = d1 * v;
 

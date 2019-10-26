@@ -25,3 +25,5 @@ bool FindFundamentalMatrix(const std::vector<std::pair<Feature, Feature>>& match
 bool Triangulate(float& depth0, float& depth1, cv::Point2f& x, cv::Point2f& xprime, const Eigen::Matrix3f E);
 
 void DecomposeProjectiveMatrixIntoKAndE(const Eigen::MatrixXf& P, Eigen::Matrix3f& K, Eigen::Matrix3f& E);
+
+bool DecomposeEssentialMatrix(const Eigen::Matrix3f& E, Eigen::Matrix3f& R, Eigen::Vector3f& t);

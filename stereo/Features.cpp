@@ -1047,7 +1047,7 @@ std::vector<std::pair<Feature, Feature> > MatchDescriptors(std::vector<Feature> 
 		}
 
 		// To match, scores must also be sufficiently similar
-		if (abs(f.score - list2[closest].score) > 2000000000000000)
+		if (abs(f.score - list2[closest].score) > MAX_DIST_BETWEEN_MATCHES)
 		{
 			continue;
 		}

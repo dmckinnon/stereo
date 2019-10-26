@@ -30,7 +30,11 @@ using namespace Eigen;
 
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
 #define DEBUG_FEATURES
+#define DEBUG_MATCHES
 //#define DEBUG
+
+#define ROTATION_STEP 0.2f
+#define TRANSLATION_STEP 0.1f
 
 GLuint buffer = 0;
 GLuint vPos;
@@ -74,18 +78,30 @@ GLuint numPoints = 0;
 
 	TODO:
 	- TEST NORMALISATION
+	- Test triangulation
 	- bring in openGL for visualisation: https://sites.google.com/site/gsucomputergraphics/educational/set-up-opengl
+	- Generate a surface mesh for the point cloud
+		- Read power crust
+		- Hoppe's
+		- Think about the bounding shape and snapping it to the mesh
+
+   So what we're going to do is just bugger teh surface reconstruction. I'm just going to make the point clouds
+   and we're going to visualise them and hopefully do SR in meshlab
 
 	Question: why does a homography send points to points between two planes, but a fundamental matrix, 
 	          still a 3x3, send a point to a line, when it is specified more?
 
 */
-void init();
-void initGL();
 void initWithPoints(const std::vector<Vector3f>& points);
-void reshape(int width, int height);
-void display();
-void DrawPoints(const vector<Vector3f>& points);
+//void reshape(int width, int height);
+//void display();
+void reshape (int w, int h);
+void renderScene(void);
+void processKeys(int key, int xx, int yy);
+float angle, lx, lz, x, z;
+GLfloat translateX, translateY, translateZ;
+GLfloat rotateX, rotateY, rotateZ;
+vector<Vector3f> pointsToDraw;
 // Support function
 vector<string> get_all_files_names_within_folder(string folder)
 {
@@ -159,6 +175,7 @@ int main(int argc, char** argv)
 	}
 	string featurePath = "";
 	bool featureFileGiven = false;
+	string pointCloudOuputPath = "";
 	Mat maskImage;
 	if (argc >= 3)
 	{
@@ -172,6 +189,10 @@ int main(int argc, char** argv)
 			{
 				featurePath = string(argv[i+1]);
 				featureFileGiven = true;
+			}
+			if (strcmp(argv[i], "-output") == 0)
+			{
+				pointCloudOuputPath = string(argv[i + 1]);
 			}
 		}
 	}
@@ -276,11 +297,17 @@ int main(int argc, char** argv)
 		for (auto& image : images)
 		{
 			Mat img = imread(image.filename, IMREAD_GRAYSCALE);
-			vector<Feature> features = FindHarrisCorners(img, 20);
+			Mat mask = Mat(img.rows, img.cols, CV_8U, 255);
+			
+			vector<Feature> features;
+			FindFASTFeatures(img, features);//FindHarrisCorners(img, 20);
 			if (features.empty())
 			{
 				cout << "No features were found in " << image.filename << endl;
 			}
+			features = ScoreAndClusterFeatures(img, features);
+
+			cout << "Found " << features.size() << " features in " << image.filename << endl;
 
 #ifdef DEBUG_FEATURES
 			Mat img_i = imread(image.filename, IMREAD_GRAYSCALE);
@@ -293,6 +320,8 @@ int main(int argc, char** argv)
 			imshow("Image - best features", img_i);
 			waitKey(0);
 #endif
+
+			// Create descriptors with scale information for better matching
 
 			// Create descriptors for each feature in the image
 			std::vector<FeatureDescriptor> descriptors;
@@ -331,8 +360,8 @@ int main(int argc, char** argv)
 #ifdef DEBUG_MATCHES
 	// Draw matching features
 	Mat matchImageScored;
-	Mat img_i = imread(imageFolder + "\\" + images[0].filename, IMREAD_GRAYSCALE);
-	Mat img_j = imread(imageFolder + "\\" + images[1].filename, IMREAD_GRAYSCALE);
+	Mat img_i = imread(images[0].filename, IMREAD_GRAYSCALE);
+	Mat img_j = imread(images[1].filename, IMREAD_GRAYSCALE);
 	hconcat(img_i, img_j, matchImageScored);
 	int offset = img_i.cols;
 	// Draw the features on the image
@@ -344,7 +373,7 @@ int main(int argc, char** argv)
 
 		circle(matchImageScored, f1.p, 2, (255, 255, 0), -1);
 		circle(matchImageScored, f2.p, 2, (255, 255, 0), -1);
-		line(matchImageScored, f1.p, f2.p, (0, 255, 255), 2, 8, 0);
+		line(matchImageScored, f1.p, f2.p, (0, 0, 0), 2, 8, 0);
 	}
 	// Debug display
 	imshow("matches", matchImageScored);
@@ -356,6 +385,9 @@ int main(int argc, char** argv)
 		cout << matches.size() << " features - not enough overlap between " << images[0].filename << " and " << images[1].filename << endl;
 	}
 	cout << matches.size() << " features found between " << images[0].filename << " and " << images[1].filename << endl;
+
+
+	// TODO: do we need to put all features into proper image coordinates for this?
 
 	// Compute Fundamental matrix
 	Matrix3f fundamentalMatrix;
@@ -407,10 +439,11 @@ int main(int argc, char** argv)
 		Point2f xprime = match.first.p;
 		Point2f x = match.second.p;
 		// Put each of these into uv coords
-		xprime.x /= stereo.img1.width;
-		xprime.y /= stereo.img1.height;
-		x.x /= stereo.img2.width;
-		x.y /= stereo.img2.height;
+		// Well, do we need to normalise or not?
+		xprime.x *= 4;// /= stereo.img1.width;
+		xprime.y *= 4;// /= stereo.img1.height;
+		x.x *= 4;// /= stereo.img2.width;
+		x.y *= 4;// /= stereo.img2.height;
 		float d0 = 0;
 		float d1 = 0;
 		if (!Triangulate(d0, d1, x, xprime, stereo.E))
@@ -419,6 +452,34 @@ int main(int argc, char** argv)
 			match.second.depth = BAD_DEPTH;
 			continue;
 		}
+
+		// Test: if we can triangulate, then reproject from camera 1 to camera 0
+		// and check reprojection error - this should weed out bad matches
+		Point2f img1Point = match.second.p;
+		Vector3f projectivePoint;
+		projectivePoint[0] = img1Point.x*4;
+		projectivePoint[1] = img1Point.y*4;
+		projectivePoint[2] = 1;
+		Vector3f point = images[1].K.inverse() * projectivePoint;
+		point = point / point[2];
+		point *= abs(d1); // TODO: fix up depth algo
+		// Now apply R and t to get to cam0 frame:
+		Vector3f t(0, 0, 0);
+		Matrix3f R;
+		R.setZero();
+		DecomposeEssentialMatrix(stereo.E, R, t);
+		Vector3f transformedPoint = R * point + t; // IS THIS RIGHT?
+		// remove depth:
+		transformedPoint /= transformedPoint[2];
+		// now project:
+		projectivePoint = images[0].K * transformedPoint;
+		// get u, v from first to bits
+		Point2f reprojection(projectivePoint[0], projectivePoint[1]);
+		// Now compare to the original
+		cout << "Comparing " << reprojection << " to " << match.first.p.x << ", " << match.first.p.y << endl;
+
+
+		// Now transform to cam 0
 
 		// Is this depth in first frame or second frame?
 		match.first.depth = d0;
@@ -438,7 +499,7 @@ int main(int argc, char** argv)
 		{
 			if (f == match.second)
 			{
-				f.depth = match.second.depth;
+				//f.depth = match.second.depth;
 			}
 		}
 	}
@@ -450,7 +511,7 @@ int main(int argc, char** argv)
 	// Need to enable lighting and shadows
 
 	// For now, just render a small cube at the location of each point in C0
-	vector<Vector3f> pointsToDraw;
+	pointsToDraw.clear();
 	for (int i = 0; i < s; ++i)
 	{
 		for (auto& f : images[i].features)
@@ -470,21 +531,34 @@ int main(int argc, char** argv)
 			point *= f.depth;
 			pointsToDraw.push_back(point);
 		}
-	}
-	//DrawPoints(pointsToDraw);
-	//glutMainLoopEvent();
-	//glutMainLoop();
 
-	//std::vector<Vector3f> points;
-	pointsToDraw.push_back(Vector3f(-0.75f,-0.5f,0.f));
-	pointsToDraw.push_back(Vector3f(0.75f,-0.5f,0.f));
-	pointsToDraw.push_back(Vector3f(0,0.75f,0.f));
-	//{-0.75, -0.5, 0.0, 1.0},
-	//	{0.75, -0.5, 0.0, 1.0},
-	//	{0.0, 0.75, 0.0, 1.0}
+		std::cout << "Drawing " << pointsToDraw.size() << " points in 3D" << std::endl;
+
+		// Only use the first image points
+		break;
+	}
+
+	// Write these points out to a text file
+	std::ofstream pointFile(pointCloudOuputPath + "\\point_cloud.txt");
+	if (pointFile.is_open())
+	{
+		for (int i = 0; i < pointsToDraw.size(); ++i)
+		{
+			auto& p = pointsToDraw[i];
+			// get normals
+			Vector3f normal = p;
+			normal *= 1 / sqrt(normal[0] * normal[0] + normal[1]*normal[1] + normal[2]*normal[2]);
+			pointFile << p[0] << " " << p[1] << " " << p[2] << " " << normal[0] << " " << normal[1] << " " << normal[2];
+			if (i < pointsToDraw.size() - 1)
+			{
+				pointFile << endl;
+			}
+		}
+		pointFile.close();
+	}
 
 	/* Some opengl rubbish to test that I have this working */
-	glutInit(&argc, argv);
+	/*glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
 	glutInitWindowSize(640, 480);   // Set the window's initial width & height
 	glutInitWindowPosition(50, 50); // Position the window's initial top-left corner
@@ -496,11 +570,33 @@ int main(int argc, char** argv)
 
 	// Register the reshape callback function
 	glutReshapeFunc(reshape);
+	glutIdleFunc(display);
+	glutKeyboardFunc(processKeys);
 
-	glutMainLoop();
+	glutMainLoop();*/
 	// Start the event loop
 
+	/*
+	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGB);  
+	glutInitWindowPosition(10,10);
+	glutInitWindowSize(640, 480);  
+	glutCreateWindow("stereo");
 
+	// set up initial transform
+	translateX = 0.f;
+	translateY = 0.f;
+	translateZ = 0.f;
+	rotateX = 0.f;
+	rotateY = 0.f;
+	rotateZ = 0.f;
+
+	glutDisplayFunc(renderScene);
+	glutReshapeFunc(reshape);
+	glutIdleFunc(renderScene);
+	glutSpecialFunc(processKeys);
+	glutMainLoop();
+	*/
 	return 0;
 }
 
@@ -513,55 +609,6 @@ int main(int argc, char** argv)
 	I couldn't figure out how to have this in a different file, so it's all here
 */
 
-// Draw a cube to some scale
-void DrawCube(const float& scale, const float& r, const float& g, const float& b)
-{
-	// Top face (y = scale)
-	glBegin(GL_QUADS);
-		// Define vertices in counter-clockwise (CCW) order with normal pointing out
-		glColor3f(r, g, b);
-		glVertex3f(scale, scale, -scale);
-		glVertex3f(-scale, scale, -scale);
-		glVertex3f(-scale, scale, scale);
-		glVertex3f(scale, scale, scale);
-
-		// Bottom face (y = -scale)
-		glColor3f(scale, 0.5f, 0.0f);
-		glVertex3f(scale, -scale, scale);
-		glVertex3f(-scale, -scale, scale);
-		glVertex3f(-scale, -scale, -scale);
-		glVertex3f(scale, -scale, -scale);
-
-		// Front face  (z = scale)
-		glColor3f(scale, 0.0f, 0.0f);
-		glVertex3f(scale, scale, scale);
-		glVertex3f(-scale, scale, scale);
-		glVertex3f(-scale, -scale, scale);
-		glVertex3f(scale, -scale, scale);
-
-		// Back face (z = -scale)
-		glColor3f(scale, scale, 0.0f);
-		glVertex3f(scale, -scale, -scale);
-		glVertex3f(-scale, -scale, -scale);
-		glVertex3f(-scale, scale, -scale);
-		glVertex3f(scale, scale, -scale);
-
-		// Left face (x = -scale)
-		glColor3f(0.0f, 0.0f, scale);
-		glVertex3f(-scale, scale, scale);
-		glVertex3f(-scale, scale, -scale);
-		glVertex3f(-scale, -scale, -scale);
-		glVertex3f(-scale, -scale, scale);
-
-		// Right face (x = scale)
-		glColor3f(scale, 0.0f, scale);
-		glVertex3f(scale, scale, -scale);
-		glVertex3f(scale, scale, scale);
-		glVertex3f(scale, -scale, scale);
-		glVertex3f(scale, -scale, -scale);
-	glEnd();  // End of drawing color-cube
-}
-
 void initWithPoints(const std::vector<Vector3f>& points)
 {
 	GLfloat* vertices = (GLfloat*)malloc(sizeof(GLfloat*)*points.size()*4);
@@ -572,14 +619,13 @@ void initWithPoints(const std::vector<Vector3f>& points)
 		vertices[4*i+2] = points[i][2];
 		vertices[4*i+3] = 1;
 	}
-	numPoints = points.size();
+	numPoints = (GLuint)points.size();
+	angle = 0;
+	lx = 0;
+	lz = 0;
+	x = 0;
+	z = 0;
 
-	// Three vertexes that define a triangle. 
-	/*GLfloat vertices[][4] = {
-		{-0.75, -0.5, 0.0, 1.0},
-		{0.75, -0.5, 0.0, 1.0},
-		{0.0, 0.75, 0.0, 1.0}
-	};*/
 
 	// Get an unused buffer object name. Required after OpenGL 3.1. 
 	glGenBuffers(1, &buffer);
@@ -592,7 +638,7 @@ void initWithPoints(const std::vector<Vector3f>& points)
 	// 2. Copy the data referenced by the third parameter (a pointer) from the main memory to the 
 	//    memory on the graphics card. 
 	// 3. If you want to dynamically load the data, then set the third parameter to be NULL. 
-	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*4*points.size(), vertices, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*4*points.size(), vertices, GL_DYNAMIC_DRAW);
 
 	// OpenGL vertex shader source code
 	const char* vSource = {
@@ -643,79 +689,7 @@ void initWithPoints(const std::vector<Vector3f>& points)
 	// Specify the background color
 	glClearColor(0, 0, 0, 1);
 }
-
-void init()
-{
-	// Three vertexes that define a triangle. 
-	GLfloat vertices[][4] = {
-		{-0.75, -0.5, 0.0, 1.0},
-		{0.75, -0.5, 0.0, 1.0},
-		{0.0, 0.75, 0.0, 1.0}
-	};
-
-	// Get an unused buffer object name. Required after OpenGL 3.1. 
-	glGenBuffers(1, &buffer);
-
-	// If it's the first time the buffer object name is used, create that buffer. 
-	glBindBuffer(GL_ARRAY_BUFFER, buffer);
-
-	// Allocate memory for the active buffer object. 
-	// 1. Allocate memory on the graphics card for the amount specified by the 2nd parameter.
-	// 2. Copy the data referenced by the third parameter (a pointer) from the main memory to the 
-	//    memory on the graphics card. 
-	// 3. If you want to dynamically load the data, then set the third parameter to be NULL. 
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-	// OpenGL vertex shader source code
-	const char* vSource = {
-		"#version 330\n"
-		"in vec4 vPos;"
-		"void main() {"
-		"	gl_Position = vPos * vec4(1.0f, 1.0f, 1.0f, 1.0f);"
-		"}"
-	};
-
-	// OpenGL fragment shader source code
-	const char* fSource = {
-		"#version 330\n"
-		"out vec4 fragColor;"
-		"void main() {"
-		"	fragColor = vec4(0.8, 0.8, 0, 1);"
-		"}"
-	};
-
-	// Declare shader IDs
-	GLuint vShader, fShader;
-
-	// Create empty shader objects
-	vShader = glCreateShader(GL_VERTEX_SHADER);
-	fShader = glCreateShader(GL_FRAGMENT_SHADER);
-
-	// Attach shader source code the shader objects
-	glShaderSource(vShader, 1, &vSource, NULL);
-	glShaderSource(fShader, 1, &fSource, NULL);
-
-	// Compile shader objects
-	glCompileShader(vShader);
-	glCompileShader(fShader);
-
-	// Create an empty shader program object
-	program = glCreateProgram();
-
-	// Attach vertex and fragment shaders to the shader program
-	glAttachShader(program, vShader);
-	glAttachShader(program, fShader);
-
-	// Link the shader program
-	glLinkProgram(program);
-
-	// Retrieve the ID of a vertex attribute, i.e. position
-	vPos = glGetAttribLocation(program, "vPos");
-
-	// Specify the background color
-	glClearColor(0, 0, 0, 1);
-}
-
+/*
 void reshape(int width, int height)
 {
 	// Compute aspect ratio of the new window
@@ -737,6 +711,10 @@ void display()
 	// Clear the window with the background color
 	glClear(GL_COLOR_BUFFER_BIT);
 
+	glMatrixMode(GL_MODELVIEW); //set the matrix to model view mode
+
+    glPushMatrix(); // push the matrix
+
 	// Activate the shader program
 	glUseProgram(program);
 
@@ -751,63 +729,101 @@ void display()
 	glEnableVertexAttribArray(vPos);
 
 	// Start the shader program
-	glDrawArrays(GL_POINTS, 0, numPoints+2);
+	glDrawArrays(GL_POINTS, 0, numPoints);
+
+	// Are these necessary?
+	glDisableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glPopMatrix();//pop the matrix
+
+    glMatrixMode(GL_PROJECTION); // Apply projection matrix again
 
 	// Refresh the window
 	glutSwapBuffers();
-}
+}*/
 
-void DrawPoints(const vector<Vector3f>& points)
+void processKeys(int key, int xx, int yy)
 {
-	// Clear the window with the background color
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear color and depth buffers
-	glMatrixMode(GL_MODELVIEW);     // To operate on model-view matrix
+	switch (key) {
+		case GLUT_KEY_LEFT :
+			rotateY -= ROTATION_STEP;
+			break;
+		case GLUT_KEY_RIGHT :
+			rotateY += ROTATION_STEP;
+			break;
+		case GLUT_KEY_UP :
+			rotateX += ROTATION_STEP;
+			break;
+		case GLUT_KEY_DOWN :
+			rotateX -= ROTATION_STEP;
+			break;
+		case GLUT_KEY_CTRL_L:
+			translateX += TRANSLATION_STEP;
+			break;
+		case GLUT_KEY_CTRL_R:
+			translateX -= TRANSLATION_STEP;
+			break;
+		case GLUT_KEY_ALT_L:
+			translateY += TRANSLATION_STEP;
+			break;
+		case GLUT_KEY_ALT_R:
+			translateY -= TRANSLATION_STEP;
+			break;
+		case GLUT_KEY_SHIFT_L:
+			translateZ += TRANSLATION_STEP;
+			break;
+		case GLUT_KEY_SHIFT_R:
+			translateZ -= TRANSLATION_STEP;
+			break;
+		case GLUT_KEY_END :
+			// reset all values
+			translateX = 0.f;
+			translateY = 0.f;
+			translateZ = 0.f;
+			rotateX = 0.f;
+			rotateY = 0.f;
+			rotateZ = 0.f;
+			break;
+	}
+}
 
-	glLoadIdentity();                 // Reset the model-view matrix
-	//glTranslatef(0.0f, 0.0f, -6.0f);  // Move into the screen to render the points
+void reshape (int w, int h) 
+{
+	glViewport (0, 0, (GLsizei)w, (GLsizei)h);  
+	glMatrixMode (GL_PROJECTION);  
+	glLoadIdentity ();  
+	gluPerspective (60, (GLfloat)w / (GLfloat)h, 1.0, 500.0);
+	glMatrixMode (GL_MODELVIEW);  
+}
 
-	glPushMatrix();
-	glBegin(GL_POINTS);
-		glColor3f(0.f, 1.f, 0.f);
-		
-		for (auto& p : points)
-		{
-			glVertex3f(p[0], p[1], p[2]);
-		}
+void renderScene(void)
+{
+	glClear (GL_COLOR_BUFFER_BIT);  
+	glLoadIdentity();
+	// Now update transformation matrices with keys
 
-	glEnd();
-	glPopMatrix();
+	// translation
+	glTranslatef(translateX, translateY, translateZ);
 
-	// Render the points as cubes
-	/*for (auto& p : points)
+	// rotation
+	glRotatef(rotateX, 1.0, 0.0, 0.0); //rotate about the x axis
+	glRotatef(rotateY, 0.0, 1.0, 0.0); //rotate about the y axis
+	glRotatef(rotateZ, 0.0, 0.0, 1.0); //rotate about the z axis
+
+	
+
+
+	float x,y,z;  
+	glPointSize(2.0);   
+	glBegin(GL_POINTS);  
+	for (const auto& p : pointsToDraw)
 	{
-		// Probably need to scale these points a wee smidge
+		glVertex3f(p[0],p[1],p[2]);  
+	}
 
-		// translate to point
-		//p[0], p[1], p[2]
-		glTranslatef(p[0], p[1], p[2]);
-		// draw tiny cube
-		DrawCube(0.2f, 1.f, 1.f, 0.f);
-		// Now anti-translate, to come back to the same origin
-		glTranslatef(-p[0], -p[1], -p[2]);
-	}*/
+	glEnd();  
+	glFlush();  
 
-
-	//DrawCube(0.5f, 0.f, 1.f, 0.f);
-
-	// Render a pyramid consists of 4 triangles
-	glLoadIdentity();                  // Reset the model-view matrix
-
-	// Refresh the window
 	glutSwapBuffers();
 }
-
-void initGL() {
-   glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Set background color to black and opaque
-   glClearDepth(1.0f);                   // Set background depth to farthest
-   glEnable(GL_DEPTH_TEST);   // Enable depth testing for z-culling
-   glDepthFunc(GL_LEQUAL);    // Set the type of depth-test
-   glShadeModel(GL_SMOOTH);   // Enable smooth shading
-   glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Nice perspective corrections
-}
-

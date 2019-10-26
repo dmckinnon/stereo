@@ -10,8 +10,8 @@
 #include <iostream>
 
 // Parameters to tune
-#define FAST_THRESHOLD 30
-#define ST_THRESH 10000.f
+#define FAST_THRESHOLD 30 //30
+#define ST_THRESH 1000.f
 #define HARRIS_THRESH 100000000.f
 #define NMS_WINDOW 2
 #define MAX_NUM_FEATURES 100
@@ -19,7 +19,7 @@
 
 // Other parameters
 #define HARRIS_WINDOW 5
-#define SCALE_PYRAMID_LEVELS 4
+#define SCALE_PYRAMID_LEVELS 1 //4
 #define HARRIS_CONSTANT 0.05f //https://courses.cs.washington.edu/courses/cse576/06sp/notes/HarrisDetector.pdf
 #define ST_WINDOW 3
 #define FAST_SPACING 3
@@ -30,12 +30,13 @@
 #define DESC_WINDOW 16
 #define DESC_SUB_WINDOW 4
 #define ILLUMINANCE_BOUND 0.2f
-#define NN_RATIO 0.7
+#define NN_RATIO 0.8
+#define MAX_DIST_BETWEEN_MATCHES 100
 
 // DOH constants
 #define DOH_WINDOW 11
-#define SCALE_SPACE_ITERATIONS 11
-#define DOH_THRESHOLD 10000000.0
+#define SCALE_SPACE_ITERATIONS 2 //11
+#define DOH_THRESHOLD 10000000000.0
 
 
 #define PI 3.14159f
