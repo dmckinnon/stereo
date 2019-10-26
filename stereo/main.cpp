@@ -31,7 +31,8 @@ using namespace Eigen;
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
 #define DEBUG_FEATURES
 #define DEBUG_MATCHES
-//#define DEBUG
+#define DEBUG_FUNDAMENTAL
+#define DEBUG_ESSENTIAL_MATRIX
 
 #define ROTATION_STEP 0.2f
 #define TRANSLATION_STEP 0.1f
@@ -131,41 +132,6 @@ inline bool does_file_exist(const std::string& name) {
 // Main
 int main(int argc, char** argv)
 {
-
-	// TODO:
-	// OpenGL draw test - draw a bunch of things
-
-	// triangulation Unit Tests
-	/*Matrix3f K1;
-	K1 << 1, 0, 0, 0, 1, 0, 0, 0, 1;
-	Matrix3f K2;
-	K2 << 1, 0, 0, 0, 1, 0, 0, 0, 1;
-	Vector3f P(0.5f, 0.f, 0.5f);
-	Matrix3f R;
-	R << -1, 0, 0, 0, 1, 0, 0, 0, -1;
-	Vector3f t(1.f, 0, 0);
-	// Construct E = R * t_skew
-	Matrix3f t_skew;
-	t_skew << 0, 0, 0, 0, 0, -1, 0, 1, 0;
-	Matrix3f E = R * t_skew;
-	Point2f x(1.f, 0);
-	Point2f xprime(-1.f, 0);
-	float d0, d1;
-	if (Triangulate(d0, d1, x, xprime, E))
-	{
-		cout << "Succeeded: d0 = " << d0 << "\td1 = " << d1 << endl;
-	}
-	else
-	{
-		cout << "Failed?" << endl;
-	}
-
-
-	return 0;*/
-	
-
-
-
 	// first arg is the folder containing all the images
 	if (argc < 2 || strcmp(argv[1], "-h") == 0)
 	{
@@ -398,22 +364,41 @@ int main(int argc, char** argv)
 	cout << "Fundamental matrix found for pair " << images[0].filename << " and " << images[1].filename << endl;
 
 #ifdef DEBUG_FUNDAMENTAL
-	// How do I verify that this is the fundamental matrix?
-	// Surely it should transform matching feature points into each other?
-	// It transforms points into lines. So we can transform one image's point into
-	// a line in the other image, and then verify that the feature is on that line
-	// But we can also use the epipolar constraint to check
-	// verify the epipolar cinstraint
-	// This seems to be working. Each match has a pixel error of <5
-	for (auto& m : matches)
+	// Since we use the top 8 to create the fundamental matrix, this is a good test for
+	// non-matching points
+	std::vector<std::pair<Feature, Feature>> temp;
+	temp.insert(temp.end(), matches.begin(), matches.end());
+	matches.clear();
+	for (auto& m : temp)
 	{
 		auto f = Vector3f(m.first.p.x, m.first.p.y, 1);
 		auto fprime = Vector3f(m.second.p.x, m.second.p.y, 1);
 
 		auto result = fprime.transpose() * fundamentalMatrix * f;
-		cout << result << endl << endl;
+		if (abs(result) < 0.1)
+		{
+			matches.push_back(m);
+		}
 	}
+	// This weeds out the bad points, leaving us with only matches that are good to triangulate
 #endif
+
+	// Can possibly transform points to proper scale and recompute F
+	for (auto& m : matches)
+	{
+		m.first.p *= 4;
+		m.second.p *= 4;
+	}
+	images[0].height *= 4;
+	images[0].width *= 4;
+	images[1].height *= 4;
+	images[1].width *= 4;
+	// Recompute fundamental matrix
+	if (!FindFundamentalMatrix(matches, fundamentalMatrix))
+	{
+		cout << "Failed to find scaled fundamental matrix for pair " << images[0].filename << " and " << images[1].filename << endl;
+	}
+	cout << "Properly scaled fundamental matrix found for pair " << images[0].filename << " and " << images[1].filename << endl;
 		
 	StereoPair stereo;
 	stereo.F = fundamentalMatrix;
@@ -421,6 +406,65 @@ int main(int argc, char** argv)
 	stereo.img2 = images[1];
 	// Compute essential matrix
 	stereo.E = stereo.img2.K.transpose() * fundamentalMatrix * stereo.img1.K;
+
+#ifdef DEBUG_ESSENTIAL_MATRIX
+	// Debug the Essential Matrix now
+	// We do this by drawing the epipolar line from the essential matrix at various depths,
+	// and drawing the matching feature
+	Vector3f t(0, 0, 0);
+	Matrix3f R;
+	R.setZero();
+	DecomposeEssentialMatrix(stereo.E, R, t);
+	
+	for (auto& m : matches)
+	{
+		Mat epipolarLines;
+		Mat img_1 = imread(images[0].filename, IMREAD_GRAYSCALE);
+		Mat img_2 = imread(images[1].filename, IMREAD_GRAYSCALE);
+		hconcat(img_1, img_2, epipolarLines);
+		offset = img_1.cols;
+
+		Point2f img1Point = m.first.p/4;
+		Point2f img2Point = m.second.p;
+		Feature f2 = m.second;
+		f2.p /= 4;
+		f2.p.x += offset;
+		circle(epipolarLines, img1Point, 20, (255, 255, 0), -1);
+		circle(epipolarLines, f2.p, 20, (255, 255, 0), -1);
+		cout << "Features are " << img1Point << " and " << f2.p << endl;
+
+		// Here we are NOT normalising
+		Vector3f projectivePoint;
+		projectivePoint[0] = img2Point.x;
+		projectivePoint[1] = img2Point.y;
+		projectivePoint[2] = 1;
+		Vector3f point = images[1].K.inverse() * projectivePoint;
+		point = point / point[2];
+		for (double d = 0.1; d < 4; d += 0.1)
+		{
+			Vector3f eL = point * d;
+			Vector3f transformedPoint = R * eL + t; // IS THIS RIGHT?
+			transformedPoint /= transformedPoint[2];
+			// now project:
+			projectivePoint = images[0].K * transformedPoint;
+			// get u, v from first to bits
+			Point2f reprojection(projectivePoint[0], projectivePoint[1]);
+			reprojection /= 4;
+			circle(epipolarLines, reprojection, 2, (255, 255, 0), -1);
+			cout << "Epipolar line point at depth " << d << " is " << reprojection << endl;
+		}
+
+		// Display
+		imshow("Epipolar line", epipolarLines);
+		waitKey(0);
+	}
+
+	
+#endif
+
+
+
+
 
 	for (auto& match : matches)
 	{
@@ -476,7 +520,7 @@ int main(int argc, char** argv)
 		// get u, v from first to bits
 		Point2f reprojection(projectivePoint[0], projectivePoint[1]);
 		// Now compare to the original
-		cout << "Comparing " << reprojection << " to " << match.first.p.x << ", " << match.first.p.y << endl;
+		//cout << "Comparing " << reprojection << " to " << match.first.p.x << ", " << match.first.p.y << endl;
 
 
 		// Now transform to cam 0
@@ -506,11 +550,6 @@ int main(int argc, char** argv)
 	
 
 	// Render points
-
-	// Need to have some global structure that holds the points to be rendered
-	// Need to enable lighting and shadows
-
-	// For now, just render a small cube at the location of each point in C0
 	pointsToDraw.clear();
 	for (int i = 0; i < s; ++i)
 	{
@@ -531,8 +570,6 @@ int main(int argc, char** argv)
 			point *= f.depth;
 			pointsToDraw.push_back(point);
 		}
-
-		std::cout << "Drawing " << pointsToDraw.size() << " points in 3D" << std::endl;
 
 		// Only use the first image points
 		break;
@@ -557,48 +594,35 @@ int main(int argc, char** argv)
 		pointFile.close();
 	}
 
-	/* Some opengl rubbish to test that I have this working */
-	/*glutInit(&argc, argv);
-	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
-	glutInitWindowSize(640, 480);   // Set the window's initial width & height
-	glutInitWindowPosition(50, 50); // Position the window's initial top-left corner
-	glutCreateWindow("Point Cloud");          // Create window with the given title
-	glewInit();
-	initWithPoints(pointsToDraw);
-	// Register the display callback function
-	glutDisplayFunc(display);
-
-	// Register the reshape callback function
-	glutReshapeFunc(reshape);
-	glutIdleFunc(display);
-	glutKeyboardFunc(processKeys);
-
-	glutMainLoop();*/
-	// Start the event loop
-
-	/*
-	glutInit(&argc, argv);
-	glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGB);  
-	glutInitWindowPosition(10,10);
-	glutInitWindowSize(640, 480);  
-	glutCreateWindow("stereo");
-
-	// set up initial transform
-	translateX = 0.f;
-	translateY = 0.f;
-	translateZ = 0.f;
-	rotateX = 0.f;
-	rotateY = 0.f;
-	rotateZ = 0.f;
-
-	glutDisplayFunc(renderScene);
-	glutReshapeFunc(reshape);
-	glutIdleFunc(renderScene);
-	glutSpecialFunc(processKeys);
-	glutMainLoop();
-	*/
 	return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ############################################################################
     OpenGL section below

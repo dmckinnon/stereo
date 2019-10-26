@@ -31,7 +31,7 @@
 #define DESC_SUB_WINDOW 4
 #define ILLUMINANCE_BOUND 0.2f
 #define NN_RATIO 0.8
-#define MAX_DIST_BETWEEN_MATCHES 100
+#define MAX_DIST_BETWEEN_MATCHES 500
 
 // DOH constants
 #define DOH_WINDOW 11
