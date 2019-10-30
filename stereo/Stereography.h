@@ -8,6 +8,8 @@
 
 #define BAD_DEPTH -1
 
+#define FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD 0.2
+
 struct StereoPair
 {
 	ImageDescriptor img1;

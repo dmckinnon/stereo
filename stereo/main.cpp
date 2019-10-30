@@ -31,7 +31,7 @@ using namespace Eigen;
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
 #define DEBUG_FEATURES
 #define DEBUG_MATCHES
-#define DEBUG_FUNDAMENTAL
+//#define DEBUG_FUNDAMENTAL
 #define DEBUG_ESSENTIAL_MATRIX
 
 #define ROTATION_STEP 0.2f
@@ -237,7 +237,8 @@ int main(int argc, char** argv)
 						// Yeah, this could be a lot better, I know
 						if (img.filename.find("0") != string::npos)
 						{
-							img.K = K;
+							img.K = K / 4;
+							img.K(2, 2) = 1;
 							break;
 						}
 					}
@@ -252,7 +253,8 @@ int main(int argc, char** argv)
 					{
 						if (img.filename.find("1") != string::npos)
 						{
-							img.K = K;
+							img.K = K/4;
+							img.K(2, 2) = 1;
 							break;
 						}
 					}
@@ -322,6 +324,82 @@ int main(int argc, char** argv)
 	cout << "Matching features for " << images[0].filename << " and " << images[1].filename << endl;
 	std::vector<std::pair<Feature, Feature>> matches = MatchDescriptors(images[0].features, images[1].features);
 
+	if (matches.size() < STEREO_OVERLAP_THRESHOLD)
+	{
+		cout << matches.size() << " features - not enough overlap between " << images[0].filename << " and " << images[1].filename << endl;
+	}
+	cout << matches.size() << " features found between " << images[0].filename << " and " << images[1].filename << endl;
+
+	// normalise point coords
+	/*for (auto& f : images[0].features)
+	{
+		f.p = Point2f(f.p.x / images[0].width, f.p.y / images[0].width);
+	}
+	for (auto& f : images[1].features)
+	{
+		f.p = Point2f(f.p.x / images[1].width, f.p.y / images[1].width);
+	}
+	for (auto& m : matches)
+	{
+		Feature& f1 = m.first;
+		Feature& f2 = m.second;
+		f1.p = Point2f(f1.p.x / images[0].width, f1.p.y / images[0].width);
+		f2.p = Point2f(f2.p.x / images[1].width, f2.p.y / images[1].width);
+	}*/
+
+
+	matches.clear();
+	// Adding GT now
+	Feature f1_1;
+	Feature f1_2;
+	f1_1.p = Point2f(88, 75);
+	f1_2.p = Point2f(38, 75);
+	matches.push_back(make_pair(f1_1, f1_2));
+	Feature f2_1;
+	Feature f2_2;
+	f2_1.p = Point2f(134, 320);
+	f2_2.p = Point2f(86, 320);
+	matches.push_back(make_pair(f2_1, f2_2));
+	Feature f3_1;
+	Feature f3_2;
+	f3_1.p = Point2f(107, 425);
+	f3_2.p = Point2f(60, 425);
+	matches.push_back(make_pair(f3_1, f3_2));
+	Feature f4_1;
+	Feature f4_2;
+	f4_1.p = Point2f(565, 336);
+	f4_2.p = Point2f(504, 336);
+	matches.push_back(make_pair(f4_1, f4_2));
+	Feature f5_1;
+	Feature f5_2;
+	f5_1.p = Point2f(643, 138);
+	f5_2.p = Point2f(617, 139);
+	matches.push_back(make_pair(f5_1, f5_2));
+	Feature f6_1;
+	Feature f6_2;
+	f6_1.p = Point2f(439, 129);
+	f6_2.p = Point2f(421, 129);
+	matches.push_back(make_pair(f6_1, f6_2));
+	Feature f7_1;
+	Feature f7_2;
+	f7_1.p = Point2f(268, 34);
+	f7_2.p = Point2f(244, 34);
+	matches.push_back(make_pair(f7_1, f7_2));
+	Feature f8_1;
+	Feature f8_2;
+	f8_1.p = Point2f(291, 239);
+	f8_2.p = Point2f(267, 239);
+	matches.push_back(make_pair(f8_1, f8_2));
+
+
+	// Compute Fundamental matrix
+	Matrix3f fundamentalMatrix;
+ 	if (!FindFundamentalMatrix(matches, fundamentalMatrix))
+	{
+		cout << "Failed to find fundamental matrix for pair " << images[0].filename << " and " << images[1].filename << endl;
+	}
+	cout << "Fundamental matrix found for pair " << images[0].filename << " and " << images[1].filename << endl;
+
 
 #ifdef DEBUG_MATCHES
 	// Draw matching features
@@ -335,47 +413,50 @@ int main(int argc, char** argv)
 	{
 		Feature f1 = matches[i].first;
 		Feature f2 = matches[i].second;
+		//f1.p.x *= images[0].width;
+		//f1.p.y *= images[0].height;
+		//f2.p.x *= images[1].width;
+		//f2.p.y *= images[1].height;
+
+
+		auto f = Vector3f(matches[i].first.p.x, matches[i].first.p.y, 1);
+		auto fprime = Vector3f(matches[i].second.p.x, matches[i].second.p.y, 1);
+
+		auto result = fprime.transpose() * fundamentalMatrix * f;
+		std::cout << "reprojection error: " << result << endl;
+
 		f2.p.x += offset;
 
 		circle(matchImageScored, f1.p, 2, (255, 255, 0), -1);
 		circle(matchImageScored, f2.p, 2, (255, 255, 0), -1);
 		line(matchImageScored, f1.p, f2.p, (0, 0, 0), 2, 8, 0);
+
+		// Debug display
+		//imshow("matches", matchImageScored);
+		//waitKey(0);
 	}
-	// Debug display
-	imshow("matches", matchImageScored);
-	waitKey(0);
+	
 #endif
 
-	if (matches.size() < STEREO_OVERLAP_THRESHOLD)
-	{
-		cout << matches.size() << " features - not enough overlap between " << images[0].filename << " and " << images[1].filename << endl;
-	}
-	cout << matches.size() << " features found between " << images[0].filename << " and " << images[1].filename << endl;
 
 
 	// TODO: do we need to put all features into proper image coordinates for this?
 
-	// Compute Fundamental matrix
-	Matrix3f fundamentalMatrix;
-	if (!FindFundamentalMatrix(matches, fundamentalMatrix))
-	{
-		cout << "Failed to find fundamental matrix for pair " << images[0].filename << " and " << images[1].filename << endl;
-	}
-	cout << "Fundamental matrix found for pair " << images[0].filename << " and " << images[1].filename << endl;
 
 #ifdef DEBUG_FUNDAMENTAL
 	// Since we use the top 8 to create the fundamental matrix, this is a good test for
 	// non-matching points
 	std::vector<std::pair<Feature, Feature>> temp;
 	temp.insert(temp.end(), matches.begin(), matches.end());
-	matches.clear();
+	//matches.clear();
 	for (auto& m : temp)
 	{
 		auto f = Vector3f(m.first.p.x, m.first.p.y, 1);
 		auto fprime = Vector3f(m.second.p.x, m.second.p.y, 1);
 
 		auto result = fprime.transpose() * fundamentalMatrix * f;
-		if (abs(result) < 0.1)
+		std::cout << "reprojection error: " << result << endl;
+		if (abs(result) < FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD)
 		{
 			matches.push_back(m);
 		}
@@ -384,7 +465,7 @@ int main(int argc, char** argv)
 #endif
 
 	// Can possibly transform points to proper scale and recompute F
-	for (auto& m : matches)
+	/*for (auto& m : matches)
 	{
 		m.first.p *= 4;
 		m.second.p *= 4;
@@ -392,22 +473,45 @@ int main(int argc, char** argv)
 	images[0].height *= 4;
 	images[0].width *= 4;
 	images[1].height *= 4;
-	images[1].width *= 4;
+	images[1].width *= 4;*/
 	// Recompute fundamental matrix
-	if (!FindFundamentalMatrix(matches, fundamentalMatrix))
-	{
-		cout << "Failed to find scaled fundamental matrix for pair " << images[0].filename << " and " << images[1].filename << endl;
-	}
-	cout << "Properly scaled fundamental matrix found for pair " << images[0].filename << " and " << images[1].filename << endl;
+	//if (!FindFundamentalMatrix(matches, fundamentalMatrix))
+	//{
+	//	cout << "Failed to find scaled fundamental matrix for pair " << images[0].filename << " and " << images[1].filename << endl;
+	//}
+	//cout << "Properly scaled fundamental matrix found for pair " << images[0].filename << " and " << images[1].filename << endl;
 		
 	StereoPair stereo;
 	stereo.F = fundamentalMatrix;
 	stereo.img1 = images[0];
 	stereo.img2 = images[1];
 	// Compute essential matrix
-	stereo.E = stereo.img2.K.transpose() * fundamentalMatrix * stereo.img1.K;
+	// On wikipedia, it says that E = KT * F * K
+	// this makes sense, since K sends real coords into image coords
+	// But in Lindstrom, it says that it assumes that points have been multiplied
+	// by K inverse, and then we use E ... oh yeah duh
+	// THE K's HAVE NOT BEEN SCALED YOU NUMPTY
+
+	stereo.E = stereo.img2.K.transpose() * stereo.F * stereo.img1.K;
 
 #ifdef DEBUG_ESSENTIAL_MATRIX
+
+	/*temp.clear();
+	temp.insert(temp.end(), matches.begin(), matches.end());
+	//matches.clear();
+	for (auto& m : temp)
+	{
+		auto f = Vector3f(m.first.p.x, m.first.p.y, 1);
+		auto fprime = Vector3f(m.second.p.x, m.second.p.y, 1);
+
+		auto result = fprime.transpose() * fundamentalMatrix * f;
+		std::cout << "Second reprojection error: " << result << endl;
+		if (abs(result) < FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD)
+		{
+			//matches.push_back(m);
+		}
+	}*/
+
 	// Debug the Essential Matrix now
 	// We do this by drawing the epipolar line from the essential matrix at various depths,
 	// and drawing the matching feature
@@ -415,7 +519,21 @@ int main(int argc, char** argv)
 	Matrix3f R;
 	R.setZero();
 	DecomposeEssentialMatrix(stereo.E, R, t);
+
+	// verify with the difference between t_skew * R and E
+	// DEBUG
+	std::cout << "Difference between E and t_skew * R:" << endl;
+	Matrix3f t_skew;
+	t_skew << 0, -t[2], t[1],
+		t[2], 0, -t[0],
+		-t[1], t[0], 0;
+	Matrix3f residual = stereo.E - t_skew * R;
+	cout << residual << endl;
 	
+	std::cout << "Rotation: \n" << R << "\nTranslation: \n" << t << endl;
+
+	cout << "E is " << endl << stereo.E << endl << " and E inverse is " << endl << stereo.E.inverse() << endl;
+
 	for (auto& m : matches)
 	{
 		Mat epipolarLines;
@@ -424,32 +542,38 @@ int main(int argc, char** argv)
 		hconcat(img_1, img_2, epipolarLines);
 		offset = img_1.cols;
 
-		Point2f img1Point = m.first.p/4;
+		Point2f img1Point = m.first.p;// / 4;
 		Point2f img2Point = m.second.p;
 		Feature f2 = m.second;
-		f2.p /= 4;
+		//f2.p /= 4;
 		f2.p.x += offset;
 		circle(epipolarLines, img1Point, 20, (255, 255, 0), -1);
 		circle(epipolarLines, f2.p, 20, (255, 255, 0), -1);
 		cout << "Features are " << img1Point << " and " << f2.p << endl;
 
 		// Here we are NOT normalising
+		// But we are going from image 0 into image 1, as that is the direction in which we computed the fundamental matrix
 		Vector3f projectivePoint;
-		projectivePoint[0] = img2Point.x;
-		projectivePoint[1] = img2Point.y;
+		projectivePoint[0] = img1Point.x;
+		projectivePoint[1] = img1Point.y;
 		projectivePoint[2] = 1;
-		Vector3f point = images[1].K.inverse() * projectivePoint;
+		Vector3f point = images[0].K.inverse() * projectivePoint;
 		point = point / point[2];
-		for (double d = 0.1; d < 4; d += 0.1)
+		//cout << "Starting with " << point << endl;
+		for (double d = 1; d < 8; d += 0.2)
 		{
 			Vector3f eL = point * d;
-			Vector3f transformedPoint = R * eL + t; // IS THIS RIGHT?
+			//cout << "depth vector:\n" << eL << endl;
+			Vector3f transformedPoint =  R.inverse()* eL - R.inverse()* t; // IS THIS RIGHT?
+			//cout << "transformed:\n" << transformedPoint << endl;
 			transformedPoint /= transformedPoint[2];
+			//cout << "normalised:\n" << transformedPoint << endl;
 			// now project:
-			projectivePoint = images[0].K * transformedPoint;
+			projectivePoint = images[1].K * transformedPoint;
 			// get u, v from first to bits
 			Point2f reprojection(projectivePoint[0], projectivePoint[1]);
-			reprojection /= 4;
+			//reprojection /= 4;
+			reprojection.x += offset;
 			circle(epipolarLines, reprojection, 2, (255, 255, 0), -1);
 			cout << "Epipolar line point at depth " << d << " is " << reprojection << endl;
 		}

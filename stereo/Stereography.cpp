@@ -76,6 +76,11 @@ void GetNormalisationTransformAndNormalisePoints(vector<pair<Feature, Feature>>&
 // Actual function
 bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix3f& F)
 {
+	if (matches.size() < 8)
+	{
+		return false;
+	}
+
 	// create a copy
 	vector<pair<Feature, Feature>> pairs;
 	for (auto m : matches)
@@ -84,10 +89,10 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	}
 
 	// Normalise points and get the transforms for denormalisation
-	Matrix3f normalise1, normalise2;
-	normalise1.setZero();
-	normalise2.setZero();
-	GetNormalisationTransformAndNormalisePoints(pairs, normalise1, normalise2);
+	//Matrix3f normalise1, normalise2;
+	//normalise1.setZero();
+	//normalise2.setZero();
+	//GetNormalisationTransformAndNormalisePoints(pairs, normalise1, normalise2);
 
 	// Get the top 8? All of them? 
 	// Select some subset and form a system of linear equations based on the 
@@ -96,10 +101,10 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	// also in theory, we have a strong matching set of points - why not use all?
 	// We should just use the first 8
 	MatrixXf Y;
-	Y.resize(8, 9);
+	Y.resize(pairs.size(), 9);
 	// The matrix Y follows the constraint of y' E y = 0 where y' is from the second feature
 	// and y is from the first
-	for (int i = 0; i < 8;/*pairs.size()*/ ++i)
+	for (int i = 0; i < pairs.size(); ++i)
 	{
 		Point2f y = pairs[i].first.p;
 		Point2f yprime = pairs[i].second.p;
@@ -127,7 +132,7 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	// Do I need to scale F by the 2,2 value?
 
 	// Transform the matrix back to the original coordinate system
-	F = normalise2.transpose() * F * normalise1;
+	//F = normalise2.transpose() * F * normalise1;
 
 	return true;
 }
@@ -159,17 +164,37 @@ bool DecomposeEssentialMatrix(const Matrix3f& E, Matrix3f& R, Vector3f& t)
 		return false;
 	auto& v = svd.matrixV();
 	auto& u = svd.matrixU();
+	auto& d = svd.singularValues();
+
+	std::cout << "Singular values: " << d << std::endl;
+
+	MatrixXf V = v.transpose().transpose();
+	MatrixXf U = u.transpose().transpose();
+	if ((u * V.transpose()).determinant() == -1)
+	{
+		V *= -1.f;
+	}
+
+	// Is this the matrix we want?
 
 	Matrix3f W;
 	W << 0, -1, 0,
 		 1,  0, 0,
 		 0,  0, 1;
 
-	R = u * W * v.transpose();
-	t(0) = u(0,2);
-	t(1) = u(1, 2);
-	t(2) = u(2, 2);
+	R = u * W * V.transpose();
+	// Or R could also be
+	R = U * W.transpose() * V.transpose();
+	// this second one is right somehow ... Basically the way to check is on the 3D points, but I still gotta sort that out
+	t(0) = U(0,2);
+	t(1) = U(1, 2);
+	t(2) = U(2, 2);
 	// TODO: Do we need to anti-rotate t?
+	// we either need t or -t
+	// t is wrong ... 
+
+	// I think we do
+	//t = R.transpose() * t;
 
 	return true;
 }
