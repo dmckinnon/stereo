@@ -125,11 +125,24 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 		return false;
 	auto & f = svd.matrixV();
 
-	F << f(0, 8), f(1, 8), f(2, 8),
+	// Does this have any constraints on the singular values?
+	// Two things:
+	// - We can enforce the rank 2 constraint
+	// - we can make the f vector have norm 1
+	VectorXf fprime(9);
+	fprime << f(0, 8), f(1, 8), f(2, 8),
 		f(3, 8), f(4, 8), f(5, 8),
 		f(6, 8), f(7, 8), f(8, 8);
+	fprime.normalize();
+
+
+	F << fprime(0), fprime(1), fprime(2),
+		fprime(3), fprime(4), fprime(5),
+		fprime(6), fprime(7), fprime(8);
 
 	// Do I need to scale F by the 2,2 value?
+
+
 
 	// Transform the matrix back to the original coordinate system
 	//F = normalise2.transpose() * F * normalise1;
@@ -155,8 +168,22 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 
 */
 // Helpers
-bool DecomposeEssentialMatrix(const Matrix3f& E, Matrix3f& R, Vector3f& t)
+bool DecomposeEssentialMatrix(Matrix3f& E, Matrix3f& R, Vector3f& t)
 {
+	BDCSVD<MatrixXf> svd_initial(E, ComputeFullU | ComputeFullV);
+	if (!svd_initial.computeV())
+		return false;
+	if (!svd_initial.computeU())
+		return false;
+	auto& d = svd_initial.singularValues();
+
+	std::cout << "Singular values: " << d << std::endl;
+	// How do we ensure that the singular values are 1 1 0?
+	// Scaling?
+	// let the first singular factor be the scalar
+	float scalar = d(0);
+	E /= scalar;
+
 	BDCSVD<MatrixXf> svd(E, ComputeFullU | ComputeFullV);
 	if (!svd.computeV())
 		return false;
@@ -164,9 +191,6 @@ bool DecomposeEssentialMatrix(const Matrix3f& E, Matrix3f& R, Vector3f& t)
 		return false;
 	auto& v = svd.matrixV();
 	auto& u = svd.matrixU();
-	auto& d = svd.singularValues();
-
-	std::cout << "Singular values: " << d << std::endl;
 
 	MatrixXf V = v.transpose().transpose();
 	MatrixXf U = u.transpose().transpose();
@@ -229,13 +253,11 @@ void LindstromOptimisation(Vector3f& x, Vector3f& xprime, const Matrix3f E)
 	xprime = xprime - S.transpose() * xprime_delta;
 }
 // Actual Function
-bool Triangulate(float& depth0, float& depth1, Point2f& x, Point2f& xprime, const Matrix3f E)
+bool Triangulate(float& depth0, float& depth1, Vector3f& x, Vector3f& xprime, Matrix3f& E)
 {
 	// Lindstrom's algorithm gives us the optimal points x and xprime
 	// So we modify p1 and p2, and then use them to compute depth. 
-	Vector3f pointX(x.x, x.y, 1);
-	Vector3f pointXPrime(xprime.x, xprime.y, 1);
-	LindstromOptimisation(pointX, pointXPrime, E);
+	LindstromOptimisation(x, xprime, E);
 
 	// Now that we have the very best points we can get, we use the naive depth-getter
 	// This basically shoots a ray out from each point, and draws a line between the two rays
@@ -250,8 +272,10 @@ bool Triangulate(float& depth0, float& depth1, Point2f& x, Point2f& xprime, cons
 		return false;
 	}
 
-	Vector3f u = R * Vector3f(pointX(0) / pointX(2), pointX(1) / pointX(2), 1);
-	Vector3f v = Vector3f(pointXPrime(0) / pointXPrime(2), pointXPrime(1) / pointXPrime(2), 1);
+	Vector3f normalisedX = x / x(2);
+	Vector3f normalisedXPrime = xprime / xprime(2);
+	Vector3f u = R * normalisedX;
+	Vector3f v = normalisedXPrime;
 
 	u = u / u.norm();
 	v = v / v.norm();

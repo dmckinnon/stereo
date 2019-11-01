@@ -24,8 +24,8 @@ struct StereoPair
 
 bool FindFundamentalMatrix(const std::vector<std::pair<Feature, Feature>>& matches, Eigen::Matrix3f& F);
 
-bool Triangulate(float& depth0, float& depth1, cv::Point2f& x, cv::Point2f& xprime, const Eigen::Matrix3f E);
+bool Triangulate(float& depth0, float& depth1, Eigen::Vector3f& x, Eigen::Vector3f& xprime, Eigen::Matrix3f& E);
 
 void DecomposeProjectiveMatrixIntoKAndE(const Eigen::MatrixXf& P, Eigen::Matrix3f& K, Eigen::Matrix3f& E);
 
-bool DecomposeEssentialMatrix(const Eigen::Matrix3f& E, Eigen::Matrix3f& R, Eigen::Vector3f& t);
+bool DecomposeEssentialMatrix(Eigen::Matrix3f& E, Eigen::Matrix3f& R, Eigen::Vector3f& t);

@@ -30,7 +30,7 @@ using namespace Eigen;
 
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
 #define DEBUG_FEATURES
-#define DEBUG_MATCHES
+//#define DEBUG_MATCHES
 //#define DEBUG_FUNDAMENTAL
 #define DEBUG_ESSENTIAL_MATRIX
 
@@ -322,7 +322,7 @@ int main(int argc, char** argv)
 	int s = (int)images.size();
 	StereoPair pair;
 	cout << "Matching features for " << images[0].filename << " and " << images[1].filename << endl;
-	std::vector<std::pair<Feature, Feature>> matches = MatchDescriptors(images[0].features, images[1].features);
+	std::vector<std::pair<Feature, Feature>> matches;// = MatchDescriptors(images[0].features, images[1].features);
 
 	if (matches.size() < STEREO_OVERLAP_THRESHOLD)
 	{
@@ -540,15 +540,15 @@ int main(int argc, char** argv)
 		Mat img_1 = imread(images[0].filename, IMREAD_GRAYSCALE);
 		Mat img_2 = imread(images[1].filename, IMREAD_GRAYSCALE);
 		hconcat(img_1, img_2, epipolarLines);
-		offset = img_1.cols;
+		int offset = img_1.cols;
 
 		Point2f img1Point = m.first.p;// / 4;
 		Point2f img2Point = m.second.p;
 		Feature f2 = m.second;
 		//f2.p /= 4;
 		f2.p.x += offset;
-		circle(epipolarLines, img1Point, 20, (255, 255, 0), -1);
-		circle(epipolarLines, f2.p, 20, (255, 255, 0), -1);
+		circle(epipolarLines, img1Point, 6, (255, 255, 0), -1);
+		circle(epipolarLines, f2.p, 6, (255, 255, 0), -1);
 		cout << "Features are " << img1Point << " and " << f2.p << endl;
 
 		// Here we are NOT normalising
@@ -560,11 +560,11 @@ int main(int argc, char** argv)
 		Vector3f point = images[0].K.inverse() * projectivePoint;
 		point = point / point[2];
 		//cout << "Starting with " << point << endl;
-		for (double d = 1; d < 8; d += 0.2)
+		for (double d = 0.1; d < 8; d += 0.1)
 		{
-			Vector3f eL = point * d;
+			Vector3f eL = point *d;
 			//cout << "depth vector:\n" << eL << endl;
-			Vector3f transformedPoint =  R.inverse()* eL - R.inverse()* t; // IS THIS RIGHT?
+			Vector3f transformedPoint = R.inverse()* eL - R.inverse()* t; // IS THIS RIGHT?
 			//cout << "transformed:\n" << transformedPoint << endl;
 			transformedPoint /= transformedPoint[2];
 			//cout << "normalised:\n" << transformedPoint << endl;
@@ -592,6 +592,11 @@ int main(int argc, char** argv)
 
 	for (auto& match : matches)
 	{
+		Mat epipolarLines;
+		Mat img_1 = imread(images[0].filename, IMREAD_GRAYSCALE);
+		Mat img_2 = imread(images[1].filename, IMREAD_GRAYSCALE);
+		hconcat(img_1, img_2, epipolarLines);
+		int offset = img_1.cols;
 		// depth is way the hell off. Fix this anohter time
 
 		// TODO: triangulation isn't working. 
@@ -606,24 +611,27 @@ int main(int argc, char** argv)
 
 		Point2f xprime = match.first.p;
 		Point2f x = match.second.p;
-		// Put each of these into uv coords
-		// Well, do we need to normalise or not?
-		xprime.x *= 4;// /= stereo.img1.width;
-		xprime.y *= 4;// /= stereo.img1.height;
-		x.x *= 4;// /= stereo.img2.width;
-		x.y *= 4;// /= stereo.img2.height;
+		Vector3f pointX = stereo.img2.K.inverse() * Vector3f(x.x, x.y, 1);
+		Vector3f pointXPrime = stereo.img1.K.inverse() * Vector3f(xprime.x, xprime.y, 1);
 		float d0 = 0;
 		float d1 = 0;
-		if (!Triangulate(d0, d1, x, xprime, stereo.E))
+		// TODO - do I need to do this the other way?
+		// TODO - normalise or no? No?
+		Matrix3f Einverse = stereo.E.inverse();
+		if (!Triangulate(d0, d1, pointX, pointXPrime, stereo.E))
 		{
 			match.first.depth = BAD_DEPTH;
 			match.second.depth = BAD_DEPTH;
 			continue;
 		}
 
+		circle(epipolarLines, xprime, 3, (255, 255, 0), -1);
+		x.x += offset;
+		circle(epipolarLines, x, 3, (255, 255, 0), -1);
+
 		// Test: if we can triangulate, then reproject from camera 1 to camera 0
 		// and check reprojection error - this should weed out bad matches
-		Point2f img1Point = match.second.p;
+		/*Point2f img1Point = match.second.p;
 		Vector3f projectivePoint;
 		projectivePoint[0] = img1Point.x*4;
 		projectivePoint[1] = img1Point.y*4;
@@ -642,7 +650,7 @@ int main(int argc, char** argv)
 		// now project:
 		projectivePoint = images[0].K * transformedPoint;
 		// get u, v from first to bits
-		Point2f reprojection(projectivePoint[0], projectivePoint[1]);
+		Point2f reprojection(projectivePoint[0], projectivePoint[1]);*/
 		// Now compare to the original
 		//cout << "Comparing " << reprojection << " to " << match.first.p.x << ", " << match.first.p.y << endl;
 
@@ -650,8 +658,34 @@ int main(int argc, char** argv)
 		// Now transform to cam 0
 
 		// Is this depth in first frame or second frame?
-		match.first.depth = d0;
-		match.second.depth = d1;// transform the point in 3D from first camera to second camera
+		d0 = abs(d0);
+		d1 = abs(d1);
+		match.first.depth = abs(d0);
+		match.second.depth = abs(d1);// transform the point in 3D from first camera to second camera
+		cout << "Depths are " << d0 << " and " << d1 << endl;
+
+		Vector3f t(0, 0, 0);
+		Matrix3f R;
+		R.setZero();
+		DecomposeEssentialMatrix(stereo.E, R, t);
+		Vector3f projectivePoint;
+		projectivePoint[0] = xprime.x;
+		projectivePoint[1] = xprime.y;
+		projectivePoint[2] = 1;
+		Vector3f point = images[0].K.inverse() * projectivePoint;
+		point = point / point[2];
+		Vector3f eL = point * d1;
+		Vector3f transformedPoint = R.inverse() * eL - R.inverse() * t; // IS THIS RIGHT?
+		transformedPoint /= transformedPoint[2];
+		//cout << "normalised:\n" << transformedPoint << endl;
+		// now project:
+		projectivePoint = images[1].K * transformedPoint;
+		// get u, v from first to bits
+		Point2f reprojection(projectivePoint[0], projectivePoint[1]);
+
+
+
+
 
 		// Transform points into each camera frame
 
@@ -670,6 +704,14 @@ int main(int argc, char** argv)
 				//f.depth = match.second.depth;
 			}
 		}
+
+		reprojection.x += offset;
+		circle(epipolarLines, reprojection, 5, (255, 255, 0), 2);
+		cout << "Point at depth " << d0 << " is " << reprojection << endl;
+
+		// Display
+		imshow("Depths", epipolarLines);
+		waitKey(0);
 	}
 	
 
