@@ -11,7 +11,7 @@
 
 // Parameters to tune
 #define FAST_THRESHOLD 30 //30
-#define ST_THRESH 1000.f
+#define ST_THRESH 700.f
 #define HARRIS_THRESH 100000000.f
 #define NMS_WINDOW 2
 #define MAX_NUM_FEATURES 100
@@ -31,7 +31,7 @@
 #define DESC_SUB_WINDOW 4
 #define ILLUMINANCE_BOUND 0.2f
 #define NN_RATIO 0.8
-#define MAX_DIST_BETWEEN_MATCHES 500
+#define MAX_DIST_BETWEEN_MATCHES 1000
 
 // DOH constants
 #define DOH_WINDOW 11

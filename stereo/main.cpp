@@ -30,7 +30,7 @@ using namespace Eigen;
 
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
 #define DEBUG_FEATURES
-//#define DEBUG_MATCHES
+#define DEBUG_MATCHES
 //#define DEBUG_FUNDAMENTAL
 #define DEBUG_ESSENTIAL_MATRIX
 
@@ -322,7 +322,8 @@ int main(int argc, char** argv)
 	int s = (int)images.size();
 	StereoPair pair;
 	cout << "Matching features for " << images[0].filename << " and " << images[1].filename << endl;
-	std::vector<std::pair<Feature, Feature>> matches;// = MatchDescriptors(images[0].features, images[1].features);
+	std::vector<std::pair<Feature, Feature>> matches2 = MatchDescriptors(images[0].features, images[1].features);
+	std::vector<std::pair<Feature, Feature>> matches;
 
 	if (matches.size() < STEREO_OVERLAP_THRESHOLD)
 	{
@@ -348,7 +349,7 @@ int main(int argc, char** argv)
 	}*/
 
 
-	matches.clear();
+	//matches.clear();
 	// Adding GT now
 	Feature f1_1;
 	Feature f1_2;
@@ -392,14 +393,26 @@ int main(int argc, char** argv)
 	matches.push_back(make_pair(f8_1, f8_2));
 
 
+	// combine matches 1 and 2
+	//matches.insert(matches.end(), matches2.begin(), matches2.end());
+	for (auto m : matches2)
+	{
+		if (abs(m.first.p.y - m.second.p.y) > 5)
+			continue;
+		matches.push_back(m);
+	}
+
 	// Compute Fundamental matrix
 	Matrix3f fundamentalMatrix;
  	if (!FindFundamentalMatrix(matches, fundamentalMatrix))
+	//if (!FindFundamentalMatrixWithRANSAC(matches, fundamentalMatrix))
 	{
 		cout << "Failed to find fundamental matrix for pair " << images[0].filename << " and " << images[1].filename << endl;
 	}
 	cout << "Fundamental matrix found for pair " << images[0].filename << " and " << images[1].filename << endl;
 
+
+	
 
 #ifdef DEBUG_MATCHES
 	// Draw matching features
@@ -431,10 +444,11 @@ int main(int argc, char** argv)
 		circle(matchImageScored, f2.p, 2, (255, 255, 0), -1);
 		line(matchImageScored, f1.p, f2.p, (0, 0, 0), 2, 8, 0);
 
-		// Debug display
-		//imshow("matches", matchImageScored);
-		//waitKey(0);
+		
 	}
+	// Debug display
+	imshow("matches", matchImageScored);
+	waitKey(0);
 	
 #endif
 
@@ -549,7 +563,7 @@ int main(int argc, char** argv)
 		f2.p.x += offset;
 		circle(epipolarLines, img1Point, 6, (255, 255, 0), -1);
 		circle(epipolarLines, f2.p, 6, (255, 255, 0), -1);
-		cout << "Features are " << img1Point << " and " << f2.p << endl;
+		//cout << "Features are " << img1Point << " and " << f2.p << endl;
 
 		// Here we are NOT normalising
 		// But we are going from image 0 into image 1, as that is the direction in which we computed the fundamental matrix
@@ -575,7 +589,7 @@ int main(int argc, char** argv)
 			//reprojection /= 4;
 			reprojection.x += offset;
 			circle(epipolarLines, reprojection, 2, (255, 255, 0), -1);
-			cout << "Epipolar line point at depth " << d << " is " << reprojection << endl;
+			//cout << "Epipolar line point at depth " << d << " is " << reprojection << endl;
 		}
 
 		// Display

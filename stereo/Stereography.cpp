@@ -1,4 +1,5 @@
 #include "Stereography.h"
+#include <stdlib.h>
 #include <iostream>
 #include <algorithm>
 
@@ -23,7 +24,7 @@ using namespace Eigen;
 	to over-error or under-error for points. 
 */
 // Support functions
-void GetNormalisationTransformAndNormalisePoints(vector<pair<Feature, Feature>>& matches, Matrix3f& T1, Matrix3f& T2)
+void GetNormalisationTransformAndNormalisePoints(vector<pair<Feature, Feature>> matches, Matrix3f& T1, Matrix3f& T2)
 {
 	// Get centroid of points for each image
 	Point2f centroid1(0,0);
@@ -44,6 +45,16 @@ void GetNormalisationTransformAndNormalisePoints(vector<pair<Feature, Feature>>&
 	}
 
 	// TODO: confirm that centroid now is origin
+	// do this by finding the average point
+	Point2f centroid3(0, 0);
+	Point2f centroid4(0, 0);
+	for (auto& m : matches)
+	{
+		centroid3 += m.first.p;
+		centroid4 += m.second.p;
+	}
+	centroid3 /= (float)matches.size();
+	centroid4 /= (float)matches.size();
 
 	// Find the average distance to the centre
 	float avgDist1 = 0;
@@ -65,13 +76,15 @@ void GetNormalisationTransformAndNormalisePoints(vector<pair<Feature, Feature>>&
 		m.second.p *= scale2;
 	}
 
-	T1 << scale1,   0,    centroid1.x*scale1,
-		    0,    scale1, centroid1.y*scale1,
+	// Now confirm that the average distance is sqrt(2)?
+
+	T1 << scale1,   0,    -1*centroid1.x*scale1,
+		    0,    scale1, -1*centroid1.y*scale1,
 		    0,      0,        1;
 
-	T2 << scale2, 0, centroid2.x* scale2,
-		0, scale2, centroid2.y* scale2,
-		0, 0, 1;
+	T2 << scale2,   0,    -1*centroid2.x*scale2,
+		    0,    scale2, -1*centroid2.y*scale2,
+		    0,      0,        1;
 }
 // Actual function
 bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix3f& F)
@@ -85,14 +98,57 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	vector<pair<Feature, Feature>> pairs;
 	for (auto m : matches)
 	{
+		if (abs(m.first.p.y - m.second.p.y) > 5)
+			continue;
 		pairs.push_back(m);
 	}
 
 	// Normalise points and get the transforms for denormalisation
-	//Matrix3f normalise1, normalise2;
-	//normalise1.setZero();
-	//normalise2.setZero();
-	//GetNormalisationTransformAndNormalisePoints(pairs, normalise1, normalise2);
+	Matrix3f normalise1, normalise2;
+	normalise1.setZero();
+	normalise2.setZero();
+	GetNormalisationTransformAndNormalisePoints(pairs, normalise1, normalise2);
+
+	cout << "Normalisation 1" << endl << normalise1 << endl;
+	cout << "Normalisation 2" << endl << normalise2 << endl;
+
+	// apply the normalisation to the features
+	vector< pair<Vector3f, Vector3f>> vectorPairs;
+	for (auto& m : pairs)
+	{
+		Vector3f first = Vector3f(m.first.p.x, m.first.p.y, 1);
+		Vector3f second = Vector3f(m.second.p.x, m.second.p.y, 1);
+
+		first = normalise1 * first;
+		second = normalise2 * second;
+
+		vectorPairs.push_back(make_pair(first, second));
+	}
+
+	// Let's pause here and draw the points distributed in two images
+	//Mat unnormalised(476, 699, CV_8U, Scalar(0));
+	//Mat normalised(600,600,CV_8U, Scalar(0));
+
+	/*for (auto& m : pairs)
+	{
+		circle(unnormalised, m.first.p, 2, 255, -1);
+		//circle(unnormalised, m.second.p, 2, 255, -1);
+	}
+	for (auto m : vectorPairs)
+	{
+		m.first *= 100;
+		m.first += Vector3f(300, 300, 0);
+		m.second *= 100;
+		m.second += Vector3f(300, 300, 0);
+
+
+		circle(normalised, Point2f(m.first[0], m.first[1]), 2, 255, -1);
+		//circle(normalised, Point2f(m.second[0], m.second[1]), 2, 255, -1);
+	}*/
+
+	//imshow("unnormalised", unnormalised);
+	//imshow("normalised", normalised);
+	//waitKey(0);
 
 	// Get the top 8? All of them? 
 	// Select some subset and form a system of linear equations based on the 
@@ -101,13 +157,13 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	// also in theory, we have a strong matching set of points - why not use all?
 	// We should just use the first 8
 	MatrixXf Y;
-	Y.resize(pairs.size(), 9);
+	Y.resize(vectorPairs.size(), 9);
 	// The matrix Y follows the constraint of y' E y = 0 where y' is from the second feature
 	// and y is from the first
-	for (int i = 0; i < pairs.size(); ++i)
+	for (int i = 0; i < vectorPairs.size(); ++i)
 	{
-		Point2f y = pairs[i].first.p;
-		Point2f yprime = pairs[i].second.p;
+		Point2f y = Point2f(vectorPairs[i].first[0], vectorPairs[i].first[1]);
+		Point2f yprime = Point2f(vectorPairs[i].second[0], vectorPairs[i].second[1]);
 		Y(i, 0) = yprime.x * y.x;
 		Y(i, 1) = yprime.x * y.y;
 		Y(i, 2) = yprime.x;
@@ -120,10 +176,14 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	}
 
 	// Solve with SVD
-	BDCSVD<MatrixXf> svd(Y, ComputeThinU | ComputeFullV);
+	BDCSVD<MatrixXf> svd(Y, ComputeFullU | ComputeFullV);
 	if (!svd.computeV())
 		return false;
 	auto & f = svd.matrixV();
+	auto& d = svd.singularValues();
+	cout << "Singular values for F:" << endl << d << endl;
+
+	// Should pick the column with the singular value closest to zero
 
 	// Does this have any constraints on the singular values?
 	// Two things:
@@ -135,8 +195,8 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 		f(6, 8), f(7, 8), f(8, 8);
 	fprime.normalize();
 
-
-	F << fprime(0), fprime(1), fprime(2),
+	Matrix3f normalisedF;
+	normalisedF << fprime(0), fprime(1), fprime(2),
 		fprime(3), fprime(4), fprime(5),
 		fprime(6), fprime(7), fprime(8);
 
@@ -145,9 +205,73 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 
 
 	// Transform the matrix back to the original coordinate system
-	//F = normalise2.transpose() * F * normalise1;
+	F = normalise2.transpose() * normalisedF * normalise1;
 
 	return true;
+}
+
+bool FindFundamentalMatrixWithRANSAC(const vector<pair<Feature, Feature>>& matches, Matrix3f& F)
+{
+	// For a number of iterations
+	// pick a random 8 points
+	// Check the reprojection error by computing x' * F * x - this should be close to zero
+	// The F with the most inliers wins
+	Matrix3f currentBestFundamentalMatrix;
+	int maxInliers = 0;
+	int iterations = 0;
+	srand(NULL);
+
+	// copy the set of points
+	vector<pair<Feature, Feature>> pairs;
+
+	do
+	{
+		pairs.clear();
+		pairs.insert(pairs.end(), matches.begin(), matches.end());
+		vector<pair<Feature, Feature>> chosenEight;
+
+		// pick 8 random
+		while (chosenEight.size() < 8)
+		{
+			int randNum = rand() % pairs.size();
+			auto featurePair = pairs[randNum];
+			chosenEight.push_back(featurePair);
+			pairs.erase(pairs.begin() + randNum);
+		}
+
+		Matrix3f F;
+		if (FindFundamentalMatrix(chosenEight, F))
+		{
+			// Now evaluate F on every point we didn't pick
+			int localInliers = 0;
+			float avgDist = 0;
+			for (auto& m : pairs)
+			{
+				auto f = Vector3f(m.first.p.x, m.first.p.y, 1);
+				auto fprime = Vector3f(m.second.p.x, m.second.p.y, 1);
+
+				auto result = fprime.transpose() * F * f;
+				localInliers += abs(result) < FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD ? 1 : 0;
+				avgDist += abs(result);
+				//std::cout << "reprojection error: " << result << endl;
+			}
+			avgDist /= pairs.size();
+			if (localInliers > maxInliers)
+			{
+				maxInliers = localInliers;
+				currentBestFundamentalMatrix = F;
+				cout << "Best one so far is " << maxInliers << " inliers with average distance " << avgDist << endl;
+			}
+		}
+
+		iterations++;
+	} while (iterations < FUNDAMENTAL_RANSAC_ITERATIONS);
+	
+	if (maxInliers > 0)
+	{
+		return true;
+	}
+	return false;
 }
 
 /*
@@ -219,6 +343,9 @@ bool DecomposeEssentialMatrix(Matrix3f& E, Matrix3f& R, Vector3f& t)
 
 	// I think we do
 	//t = R.transpose() * t;
+
+	// t cxan also be t = UWDU.transpose()
+	// or t = UZU.transpose, z = -W without the 1 in the borrom right
 
 	return true;
 }
