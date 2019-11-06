@@ -98,8 +98,6 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	vector<pair<Feature, Feature>> pairs;
 	for (auto m : matches)
 	{
-		if (abs(m.first.p.y - m.second.p.y) > 5)
-			continue;
 		pairs.push_back(m);
 	}
 
@@ -109,8 +107,8 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	normalise2.setZero();
 	GetNormalisationTransformAndNormalisePoints(pairs, normalise1, normalise2);
 
-	cout << "Normalisation 1" << endl << normalise1 << endl;
-	cout << "Normalisation 2" << endl << normalise2 << endl;
+	//cout << "Normalisation 1" << endl << normalise1 << endl;
+	//cout << "Normalisation 2" << endl << normalise2 << endl;
 
 	// apply the normalisation to the features
 	vector< pair<Vector3f, Vector3f>> vectorPairs;
@@ -181,7 +179,7 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 		return false;
 	auto & f = svd.matrixV();
 	auto& d = svd.singularValues();
-	cout << "Singular values for F:" << endl << d << endl;
+	//cout << "Singular values for F:" << endl << d << endl;
 
 	// Should pick the column with the singular value closest to zero
 
@@ -200,12 +198,9 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 		fprime(3), fprime(4), fprime(5),
 		fprime(6), fprime(7), fprime(8);
 
-	// Do I need to scale F by the 2,2 value?
-
-
-
 	// Transform the matrix back to the original coordinate system
 	F = normalise2.transpose() * normalisedF * normalise1;
+	F /= F(2, 2);
 
 	return true;
 }

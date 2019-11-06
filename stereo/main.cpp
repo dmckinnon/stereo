@@ -397,8 +397,6 @@ int main(int argc, char** argv)
 	//matches.insert(matches.end(), matches2.begin(), matches2.end());
 	for (auto m : matches2)
 	{
-		if (abs(m.first.p.y - m.second.p.y) > 5)
-			continue;
 		matches.push_back(m);
 	}
 
@@ -434,6 +432,15 @@ int main(int argc, char** argv)
 
 		auto f = Vector3f(matches[i].first.p.x, matches[i].first.p.y, 1);
 		auto fprime = Vector3f(matches[i].second.p.x, matches[i].second.p.y, 1);
+		/*Vector3f transformed = fundamentalMatrix * f;
+		transformed *= 1 / transformed[2];
+		for (float i = 10; i < 500; i += 10)
+		{
+			cout << transformed[0] * i << " " << transformed[1] * i << " " << transformed[2] << endl;
+			Point2f linePoint(transformed[0]*i + offset, transformed[1]*i);
+			circle(matchImageScored, linePoint, 3, (255, 255, 0), -1);
+		}*/
+
 
 		auto result = fprime.transpose() * fundamentalMatrix * f;
 		std::cout << "reprojection error: " << result << endl;
@@ -443,7 +450,7 @@ int main(int argc, char** argv)
 		circle(matchImageScored, f1.p, 2, (255, 255, 0), -1);
 		circle(matchImageScored, f2.p, 2, (255, 255, 0), -1);
 		line(matchImageScored, f1.p, f2.p, (0, 0, 0), 2, 8, 0);
-
+		
 		
 	}
 	// Debug display
@@ -477,24 +484,7 @@ int main(int argc, char** argv)
 	}
 	// This weeds out the bad points, leaving us with only matches that are good to triangulate
 #endif
-
-	// Can possibly transform points to proper scale and recompute F
-	/*for (auto& m : matches)
-	{
-		m.first.p *= 4;
-		m.second.p *= 4;
-	}
-	images[0].height *= 4;
-	images[0].width *= 4;
-	images[1].height *= 4;
-	images[1].width *= 4;*/
-	// Recompute fundamental matrix
-	//if (!FindFundamentalMatrix(matches, fundamentalMatrix))
-	//{
-	//	cout << "Failed to find scaled fundamental matrix for pair " << images[0].filename << " and " << images[1].filename << endl;
-	//}
-	//cout << "Properly scaled fundamental matrix found for pair " << images[0].filename << " and " << images[1].filename << endl;
-		
+	
 	StereoPair stereo;
 	stereo.F = fundamentalMatrix;
 	stereo.img1 = images[0];
@@ -509,22 +499,6 @@ int main(int argc, char** argv)
 	stereo.E = stereo.img2.K.transpose() * stereo.F * stereo.img1.K;
 
 #ifdef DEBUG_ESSENTIAL_MATRIX
-
-	/*temp.clear();
-	temp.insert(temp.end(), matches.begin(), matches.end());
-	//matches.clear();
-	for (auto& m : temp)
-	{
-		auto f = Vector3f(m.first.p.x, m.first.p.y, 1);
-		auto fprime = Vector3f(m.second.p.x, m.second.p.y, 1);
-
-		auto result = fprime.transpose() * fundamentalMatrix * f;
-		std::cout << "Second reprojection error: " << result << endl;
-		if (abs(result) < FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD)
-		{
-			//matches.push_back(m);
-		}
-	}*/
 
 	// Debug the Essential Matrix now
 	// We do this by drawing the epipolar line from the essential matrix at various depths,
@@ -574,7 +548,7 @@ int main(int argc, char** argv)
 		Vector3f point = images[0].K.inverse() * projectivePoint;
 		point = point / point[2];
 		//cout << "Starting with " << point << endl;
-		for (double d = 0.1; d < 8; d += 0.1)
+		for (double d = 1; d < 10; d += 0.2)
 		{
 			Vector3f eL = point *d;
 			//cout << "depth vector:\n" << eL << endl;
