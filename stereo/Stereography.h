@@ -8,8 +8,9 @@
 
 #define BAD_DEPTH -1
 
-#define FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD 0.05
-#define FUNDAMENTAL_RANSAC_ITERATIONS 2000
+#define FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD 70
+#define MIN_NUM_INLIERS 20
+#define FUNDAMENTAL_RANSAC_ITERATIONS 200
 
 struct StereoPair
 {
@@ -25,7 +26,7 @@ struct StereoPair
 
 bool FindFundamentalMatrix(const std::vector<std::pair<Feature, Feature>>& matches, Eigen::Matrix3f& F);
 
-bool FindFundamentalMatrixWithRANSAC(const std::vector<std::pair<Feature, Feature>>& matches, Eigen::Matrix3f& F);
+bool FindFundamentalMatrixWithRANSAC(const std::vector<std::pair<Feature, Feature>>& matches, Eigen::Matrix3f& F, StereoPair& stereo);
 
 bool Triangulate(float& depth0, float& depth1, Eigen::Vector3f& x, Eigen::Vector3f& xprime, Eigen::Matrix3f& E);
 

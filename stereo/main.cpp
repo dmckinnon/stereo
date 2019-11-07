@@ -400,10 +400,14 @@ int main(int argc, char** argv)
 		matches.push_back(m);
 	}
 
+	StereoPair stereo;
+	stereo.img1 = images[0];
+	stereo.img2 = images[1];
+
 	// Compute Fundamental matrix
 	Matrix3f fundamentalMatrix;
- 	if (!FindFundamentalMatrix(matches, fundamentalMatrix))
-	//if (!FindFundamentalMatrixWithRANSAC(matches, fundamentalMatrix))
+ 	//if (!FindFundamentalMatrix(matches, fundamentalMatrix))
+	if (!FindFundamentalMatrixWithRANSAC(matches, fundamentalMatrix, stereo))
 	{
 		cout << "Failed to find fundamental matrix for pair " << images[0].filename << " and " << images[1].filename << endl;
 	}
@@ -424,22 +428,10 @@ int main(int argc, char** argv)
 	{
 		Feature f1 = matches[i].first;
 		Feature f2 = matches[i].second;
-		//f1.p.x *= images[0].width;
-		//f1.p.y *= images[0].height;
-		//f2.p.x *= images[1].width;
-		//f2.p.y *= images[1].height;
 
 
 		auto f = Vector3f(matches[i].first.p.x, matches[i].first.p.y, 1);
 		auto fprime = Vector3f(matches[i].second.p.x, matches[i].second.p.y, 1);
-		/*Vector3f transformed = fundamentalMatrix * f;
-		transformed *= 1 / transformed[2];
-		for (float i = 10; i < 500; i += 10)
-		{
-			cout << transformed[0] * i << " " << transformed[1] * i << " " << transformed[2] << endl;
-			Point2f linePoint(transformed[0]*i + offset, transformed[1]*i);
-			circle(matchImageScored, linePoint, 3, (255, 255, 0), -1);
-		}*/
 
 
 		auto result = fprime.transpose() * fundamentalMatrix * f;
@@ -451,11 +443,11 @@ int main(int argc, char** argv)
 		circle(matchImageScored, f2.p, 2, (255, 255, 0), -1);
 		line(matchImageScored, f1.p, f2.p, (0, 0, 0), 2, 8, 0);
 		
-		
+		// Debug display
+		imshow("matches", matchImageScored);
+		waitKey(0);
 	}
-	// Debug display
-	imshow("matches", matchImageScored);
-	waitKey(0);
+	
 	
 #endif
 
@@ -485,17 +477,16 @@ int main(int argc, char** argv)
 	// This weeds out the bad points, leaving us with only matches that are good to triangulate
 #endif
 	
-	StereoPair stereo;
-	stereo.F = fundamentalMatrix;
-	stereo.img1 = images[0];
-	stereo.img2 = images[1];
+	
+	
+	
 	// Compute essential matrix
 	// On wikipedia, it says that E = KT * F * K
 	// this makes sense, since K sends real coords into image coords
 	// But in Lindstrom, it says that it assumes that points have been multiplied
 	// by K inverse, and then we use E ... oh yeah duh
 	// THE K's HAVE NOT BEEN SCALED YOU NUMPTY
-
+	stereo.F = fundamentalMatrix;
 	stereo.E = stereo.img2.K.transpose() * stereo.F * stereo.img1.K;
 
 #ifdef DEBUG_ESSENTIAL_MATRIX

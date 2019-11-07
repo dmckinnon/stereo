@@ -205,16 +205,37 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	return true;
 }
 
-bool FindFundamentalMatrixWithRANSAC(const vector<pair<Feature, Feature>>& matches, Matrix3f& F)
+float ReprojectionError(Matrix3f E, Matrix3f R, Vector3f t, Matrix3f K1, Matrix3f K2, Vector3f p1, Vector3f p2)
+{
+	float error = 0;
+
+	Vector3f point1 = K1.inverse() * p1;
+	Vector3f point2 = K2.inverse() * p2;
+	float d0, d1;
+	if (!Triangulate(d0, d1, point1, point2, E))
+	{
+		return 1000;
+	}
+
+	Vector3f transformedPoint = R.inverse() * (point1 * d1) - R.inverse() * t;
+	transformedPoint /= transformedPoint[2];
+	transformedPoint = K2 * transformedPoint;
+
+	error = (transformedPoint - p1).norm();
+
+	return error;
+}
+
+bool FindFundamentalMatrixWithRANSAC(const vector<pair<Feature, Feature>>& matches, Matrix3f& F, StereoPair& stereo)
 {
 	// For a number of iterations
 	// pick a random 8 points
 	// Check the reprojection error by computing x' * F * x - this should be close to zero
 	// The F with the most inliers wins
 	Matrix3f currentBestFundamentalMatrix;
-	int maxInliers = 0;
+	int minError = FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD* MIN_NUM_INLIERS;
 	int iterations = 0;
-	srand(NULL);
+	srand(F(0,0));
 
 	// copy the set of points
 	vector<pair<Feature, Feature>> pairs;
@@ -234,36 +255,68 @@ bool FindFundamentalMatrixWithRANSAC(const vector<pair<Feature, Feature>>& match
 			pairs.erase(pairs.begin() + randNum);
 		}
 
-		Matrix3f F;
-		if (FindFundamentalMatrix(chosenEight, F))
+		Matrix3f fundamental;
+		if (FindFundamentalMatrix(chosenEight, fundamental))
 		{
-			// Now evaluate F on every point we didn't pick
+			// Now find reprojection error of points
 			int localInliers = 0;
-			float avgDist = 0;
+			float avgError = 0;
+
+			Matrix3f E = stereo.img2.K.transpose() * fundamental * stereo.img1.K;
+			Matrix3f R;
+			R.setZero();
+			Vector3f t(0, 0, 0);
+			DecomposeEssentialMatrix(E, R, t);
 			for (auto& m : pairs)
 			{
 				auto f = Vector3f(m.first.p.x, m.first.p.y, 1);
 				auto fprime = Vector3f(m.second.p.x, m.second.p.y, 1);
 
-				auto result = fprime.transpose() * F * f;
-				localInliers += abs(result) < FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD ? 1 : 0;
-				avgDist += abs(result);
-				//std::cout << "reprojection error: " << result << endl;
+				float reprojectionError = ReprojectionError(E, R, t, stereo.img1.K, stereo.img2.K, f, fprime);
+				if (reprojectionError < FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD)
+				{
+					localInliers++;
+					avgError += reprojectionError;
+				}
+				
 			}
-			avgDist /= pairs.size();
-			if (localInliers > maxInliers)
+			if (localInliers > 0)
+				avgError /= localInliers;
+			cout << avgError << endl;
+			if (localInliers > MIN_NUM_INLIERS && avgError < minError)
 			{
-				maxInliers = localInliers;
-				currentBestFundamentalMatrix = F;
-				cout << "Best one so far is " << maxInliers << " inliers with average distance " << avgDist << endl;
+				minError = avgError;
+				currentBestFundamentalMatrix = fundamental;
+				cout << "Best one so far is " << localInliers << " inliers with average distance " << avgError << endl;
+
+				// visualise which 8 we picked from
+				//Mat funamental(476, 699, CV_8U, Scalar(0));
+				Mat matchImageScored;
+				Mat img_i(476, 699, CV_8U, Scalar(127));
+				Mat img_j(476, 699, CV_8U, Scalar(127));
+				hconcat(img_i, img_j, matchImageScored);
+				int offset = img_i.cols;
+				for (auto p : chosenEight)
+				{
+					auto f2 = p.second;
+					f2.p.x += offset;
+					circle(matchImageScored, p.first.p, 4, 255, -1);
+					circle(matchImageScored, f2.p, 4, 255, -1);
+					line(matchImageScored, p.first.p, f2.p, (0, 0, 0), 2, 8, 0);
+				}
+				imshow("funamental", matchImageScored);
+				waitKey(0);
+				//break;
 			}
 		}
 
 		iterations++;
+		//cout << "iteration " << iterations << endl;
 	} while (iterations < FUNDAMENTAL_RANSAC_ITERATIONS);
 	
-	if (maxInliers > 0)
+	if (minError < FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD * MIN_NUM_INLIERS)
 	{
+		F = currentBestFundamentalMatrix;
 		return true;
 	}
 	return false;
@@ -296,7 +349,7 @@ bool DecomposeEssentialMatrix(Matrix3f& E, Matrix3f& R, Vector3f& t)
 		return false;
 	auto& d = svd_initial.singularValues();
 
-	std::cout << "Singular values: " << d << std::endl;
+	//std::cout << "Singular values: " << d << std::endl;
 	// How do we ensure that the singular values are 1 1 0?
 	// Scaling?
 	// let the first singular factor be the scalar
