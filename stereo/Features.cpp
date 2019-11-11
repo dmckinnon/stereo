@@ -1160,6 +1160,51 @@ void GetImageDescriptorsForFile(
 		}
 	}
 }
+// Similar function but single threaded
+void GetImageDescriptorsForImages(
+	_Inout_ std::vector<ImageDescriptor>& images)
+{
+	for (auto& image : images)
+	{
+		Mat img = imread(image.filename, IMREAD_GRAYSCALE);
+
+		vector<Feature> features;
+		FindFASTFeatures(img, features);
+		if (features.empty())
+		{
+			cout << "No features were found in " << image.filename << endl;
+		}
+		features = ScoreAndClusterFeatures(img, features);
+
+		cout << "Found " << features.size() << " features in " << image.filename << endl;
+
+#ifdef DEBUG_FEATURES
+		Mat img_i = imread(image.filename, IMREAD_GRAYSCALE);
+		for (auto& f : features)
+		{
+			circle(img_i, f.p, 3, (255, 255, 0), -1);
+		}
+
+		// Display
+		imshow("Image - best features", img_i);
+		waitKey(0);
+#endif
+
+		// Create descriptors with scale information for better matching
+
+		// Create descriptors for each feature in the image
+		std::vector<FeatureDescriptor> descriptors;
+		if (!CreateSIFTDescriptors(img, features, descriptors))
+		{
+			cout << "Failed to create feature descriptors for image " << image.filename << endl;
+			continue;
+		}
+
+		image.width = img.cols;
+		image.height = img.rows;
+		image.features = features;
+	}
+}
 
 /*
 	Given a list of image descriptors, serialise these to a .dat file

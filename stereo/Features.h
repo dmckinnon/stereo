@@ -184,6 +184,8 @@ bool SaveImageDescriptorsToFile(const std::string& filename, std::vector<ImageDe
 
 bool ReadDescriptorsFromFile(const std::string& filename, std::vector<ImageDescriptor>& images);
 
+void GetImageDescriptorsForImages(_Inout_ std::vector<ImageDescriptor>& images);
+
 /*
 	Feature Detection Unit Test functions
 */

@@ -33,3 +33,5 @@ bool Triangulate(float& depth0, float& depth1, Eigen::Vector3f& x, Eigen::Vector
 void DecomposeProjectiveMatrixIntoKAndE(const Eigen::MatrixXf& P, Eigen::Matrix3f& K, Eigen::Matrix3f& E);
 
 bool DecomposeEssentialMatrix(Eigen::Matrix3f& E, Eigen::Matrix3f& R, Eigen::Vector3f& t);
+
+void ReadCalibrationMatricesFromFile(_In_ const std::string& calibFile, _Inout_ std::vector<ImageDescriptor>& images);

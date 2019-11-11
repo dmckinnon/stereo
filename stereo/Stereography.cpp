@@ -44,18 +44,6 @@ void GetNormalisationTransformAndNormalisePoints(vector<pair<Feature, Feature>> 
 		m.second.p -= centroid2;
 	}
 
-	// TODO: confirm that centroid now is origin
-	// do this by finding the average point
-	Point2f centroid3(0, 0);
-	Point2f centroid4(0, 0);
-	for (auto& m : matches)
-	{
-		centroid3 += m.first.p;
-		centroid4 += m.second.p;
-	}
-	centroid3 /= (float)matches.size();
-	centroid4 /= (float)matches.size();
-
 	// Find the average distance to the centre
 	float avgDist1 = 0;
 	float avgDist2 = 0;
@@ -76,8 +64,6 @@ void GetNormalisationTransformAndNormalisePoints(vector<pair<Feature, Feature>> 
 		m.second.p *= scale2;
 	}
 
-	// Now confirm that the average distance is sqrt(2)?
-
 	T1 << scale1,   0,    -1*centroid1.x*scale1,
 		    0,    scale1, -1*centroid1.y*scale1,
 		    0,      0,        1;
@@ -94,7 +80,7 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 		return false;
 	}
 
-	// create a copy
+	// create a local copy
 	vector<pair<Feature, Feature>> pairs;
 	for (auto m : matches)
 	{
@@ -106,9 +92,6 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 	normalise1.setZero();
 	normalise2.setZero();
 	GetNormalisationTransformAndNormalisePoints(pairs, normalise1, normalise2);
-
-	//cout << "Normalisation 1" << endl << normalise1 << endl;
-	//cout << "Normalisation 2" << endl << normalise2 << endl;
 
 	// apply the normalisation to the features
 	vector< pair<Vector3f, Vector3f>> vectorPairs;
@@ -123,33 +106,7 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 		vectorPairs.push_back(make_pair(first, second));
 	}
 
-	// Let's pause here and draw the points distributed in two images
-	//Mat unnormalised(476, 699, CV_8U, Scalar(0));
-	//Mat normalised(600,600,CV_8U, Scalar(0));
-
-	/*for (auto& m : pairs)
-	{
-		circle(unnormalised, m.first.p, 2, 255, -1);
-		//circle(unnormalised, m.second.p, 2, 255, -1);
-	}
-	for (auto m : vectorPairs)
-	{
-		m.first *= 100;
-		m.first += Vector3f(300, 300, 0);
-		m.second *= 100;
-		m.second += Vector3f(300, 300, 0);
-
-
-		circle(normalised, Point2f(m.first[0], m.first[1]), 2, 255, -1);
-		//circle(normalised, Point2f(m.second[0], m.second[1]), 2, 255, -1);
-	}*/
-
-	//imshow("unnormalised", unnormalised);
-	//imshow("normalised", normalised);
-	//waitKey(0);
-
-	// Get the top 8? All of them? 
-	// Select some subset and form a system of linear equations based on the 
+	// Select some subset - here all - and form a system of linear equations based on the 
 	// epipolar constraint
 	// In theory, it shouldn't matter which 8 we pick
 	// also in theory, we have a strong matching set of points - why not use all?
@@ -179,9 +136,6 @@ bool FindFundamentalMatrix(const vector<pair<Feature, Feature>>& matches, Matrix
 		return false;
 	auto & f = svd.matrixV();
 	auto& d = svd.singularValues();
-	//cout << "Singular values for F:" << endl << d << endl;
-
-	// Should pick the column with the singular value closest to zero
 
 	// Does this have any constraints on the singular values?
 	// Two things:
@@ -287,6 +241,8 @@ bool FindFundamentalMatrixWithRANSAC(const vector<pair<Feature, Feature>>& match
 			{
 				minError = avgError;
 				currentBestFundamentalMatrix = fundamental;
+
+#ifdef DEBUG_RANSAC_FUNDAMENTAL
 				cout << "Best one so far is " << localInliers << " inliers with average distance " << avgError << endl;
 
 				// visualise which 8 we picked from
@@ -304,9 +260,9 @@ bool FindFundamentalMatrixWithRANSAC(const vector<pair<Feature, Feature>>& match
 					circle(matchImageScored, f2.p, 4, 255, -1);
 					line(matchImageScored, p.first.p, f2.p, (0, 0, 0), 2, 8, 0);
 				}
-				imshow("funamental", matchImageScored);
+				imshow("fundamental", matchImageScored);
 				waitKey(0);
-				//break;
+#endif
 			}
 		}
 
@@ -349,9 +305,8 @@ bool DecomposeEssentialMatrix(Matrix3f& E, Matrix3f& R, Vector3f& t)
 		return false;
 	auto& d = svd_initial.singularValues();
 
-	//std::cout << "Singular values: " << d << std::endl;
-	// How do we ensure that the singular values are 1 1 0?
-	// Scaling?
+	// To ensure that we have singular values of 1 1 0, 
+	// we scale E
 	// let the first singular factor be the scalar
 	float scalar = d(0);
 	E /= scalar;
@@ -371,8 +326,6 @@ bool DecomposeEssentialMatrix(Matrix3f& E, Matrix3f& R, Vector3f& t)
 		V *= -1.f;
 	}
 
-	// Is this the matrix we want?
-
 	Matrix3f W;
 	W << 0, -1, 0,
 		 1,  0, 0,
@@ -381,26 +334,20 @@ bool DecomposeEssentialMatrix(Matrix3f& E, Matrix3f& R, Vector3f& t)
 	R = u * W * V.transpose();
 	// Or R could also be
 	R = U * W.transpose() * V.transpose();
-	// this second one is right somehow ... Basically the way to check is on the 3D points, but I still gotta sort that out
+	// this second one is right somehow ... Basically the way to check is on the 3D points
 	t(0) = U(0,2);
 	t(1) = U(1, 2);
 	t(2) = U(2, 2);
-	// TODO: Do we need to anti-rotate t?
+
 	// we either need t or -t
-	// t is wrong ... 
 
-	// I think we do
-	//t = R.transpose() * t;
-
-	// t cxan also be t = UWDU.transpose()
+	// t can also be t = UWDU.transpose()
 	// or t = UZU.transpose, z = -W without the 1 in the borrom right
 
 	return true;
 }
 void LindstromOptimisation(Vector3f& x, Vector3f& xprime, const Matrix3f E)
 {
-	// TODO test Lindstrom optimisation
-
 	MatrixXf S(2, 3);
 	S << 1, 0, 0,
 		0, 1, 0;
@@ -490,7 +437,6 @@ bool Triangulate(float& depth0, float& depth1, Vector3f& x, Vector3f& xprime, Ma
 	depth0 = d0;
 	depth1 = d1;
 	// It's worth noting that we compute the final 3d point, and the distance in both cameras
-	// Depth is negative?
 
 	return true;
 }
@@ -559,4 +505,73 @@ void DecomposeProjectiveMatrixIntoKAndE(const MatrixXf& P, Matrix3f& K, Matrix3f
 		     t[2],   0,   -t[0],
 		    -t[1],  t[0],   0;
 	E = R * t_skew;
+}
+
+/*
+	Read calibration matrices from given files, 
+	using the specific format of the middlebury dataset
+*/
+void ReadCalibrationMatricesFromFile(
+	_In_ const std::string& calibFilename,
+	_Inout_ std::vector<ImageDescriptor>& images)
+{
+	ifstream calibFile;
+	calibFile.open(calibFilename);
+	if (calibFile.is_open())
+	{
+		string line;
+		while (getline(calibFile, line))
+		{
+			Matrix3f K;
+			replace(line.begin(), line.end(), '[', ' ');
+			replace(line.begin(), line.end(), ']', ' ');
+			replace(line.begin(), line.end(), ';', ' ');
+			// extract the numbers out of the stringstream
+			vector<string> tokens;
+			string token;
+			stringstream stream;
+			stream << line;
+			while (!stream.eof())
+			{
+				stream >> token;
+				tokens.push_back(token);
+			}
+
+			// if line contains cam
+			if (tokens[0].find("cam0") != string::npos)
+			{
+				// Read calibration and assign to descriptor for image 0
+				K << stod(tokens[1], nullptr), stod(tokens[2], nullptr), stod(tokens[3], nullptr),
+					stod(tokens[4], nullptr), stod(tokens[5], nullptr), stod(tokens[6], nullptr),
+					stod(tokens[7], nullptr), stod(tokens[7], nullptr), stod(tokens[9], nullptr);
+
+				for (auto& img : images)
+				{
+					// Yeah, this could be a lot better, I know
+					if (img.filename.find("0") != string::npos)
+					{
+						img.K = K / 4;
+						img.K(2, 2) = 1;
+						break;
+					}
+				}
+			}
+			else if (tokens[0].find("cam1") != string::npos)
+			{
+				// Read calibration and assign to image 1
+				K << stod(tokens[1], nullptr), stod(tokens[2], nullptr), stod(tokens[3], nullptr),
+					stod(tokens[4], nullptr), stod(tokens[5], nullptr), stod(tokens[6], nullptr),
+					stod(tokens[7], nullptr), stod(tokens[7], nullptr), stod(tokens[9], nullptr);
+				for (auto& img : images)
+				{
+					if (img.filename.find("1") != string::npos)
+					{
+						img.K = K / 4;
+						img.K(2, 2) = 1;
+						break;
+					}
+				}
+			}
+		}
+	}
 }

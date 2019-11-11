@@ -18,8 +18,8 @@
 #include "Stereography.h"
 #include "Estimation.h"
 #include <stdlib.h>
-#include <GL/glew.h> // This must appear before freeglut.h
-#include <GL/freeglut.h>
+//#include <GL/glew.h> // This must appear before freeglut.h
+//#include <GL/freeglut.h>
 #include <omp.h>
 
 using namespace std;
@@ -29,19 +29,19 @@ using namespace Eigen;
 #define STEREO_OVERLAP_THRESHOLD 20
 
 #define BUFFER_OFFSET(offset) ((GLvoid *) offset)
-#define DEBUG_FEATURES
-#define DEBUG_MATCHES
+//#define DEBUG_FEATURES
+//#define DEBUG_MATCHES
 //#define DEBUG_FUNDAMENTAL
-#define DEBUG_ESSENTIAL_MATRIX
+//#define DEBUG_ESSENTIAL_MATRIX
 
 #define ROTATION_STEP 0.2f
 #define TRANSLATION_STEP 0.1f
 
-GLuint buffer = 0;
+/*GLuint buffer = 0;
 GLuint vPos;
 GLuint program;
 
-GLuint numPoints = 0;
+GLuint numPoints = 0;*/
 
 /*
 	This is an exercise in stereo depth-maps and reconstruction (stretch goal)
@@ -72,27 +72,14 @@ GLuint numPoints = 0;
 		8-point algorithm by Hartley (https://en.wikipedia.org/wiki/Eight-point_algorithm#The_normalized_eight-point_algorithm)
 
 	Triangulation
-		This will be computed using Peter Lindstrom's algorithm, once I figure it out
+		This will be computed using Peter Lindstrom's algorithm
 
+	Rectification
+		
 	Depth-map
 
-
-	TODO:
-	- TEST NORMALISATION
-	- Test triangulation
-	- bring in openGL for visualisation: https://sites.google.com/site/gsucomputergraphics/educational/set-up-opengl
-	- Generate a surface mesh for the point cloud
-		- Read power crust
-		- Hoppe's
-		- Think about the bounding shape and snapping it to the mesh
-
-   So what we're going to do is just bugger teh surface reconstruction. I'm just going to make the point clouds
-   and we're going to visualise them and hopefully do SR in meshlab
-
-	Question: why does a homography send points to points between two planes, but a fundamental matrix, 
-	          still a 3x3, send a point to a line, when it is specified more?
-
 */
+/*
 void initWithPoints(const std::vector<Vector3f>& points);
 //void reshape(int width, int height);
 //void display();
@@ -100,10 +87,10 @@ void reshape (int w, int h);
 void renderScene(void);
 void processKeys(int key, int xx, int yy);
 float angle, lx, lz, x, z;
-GLfloat translateX, translateY, translateZ;
-GLfloat rotateX, rotateY, rotateZ;
-vector<Vector3f> pointsToDraw;
-// Support function
+//GLfloat translateX, translateY, translateZ;
+//GLfloat rotateX, rotateY, rotateZ;
+vector<Vector3f> pointsToDraw;*/
+// Support functions
 vector<string> get_all_files_names_within_folder(string folder)
 {
 	vector<string> names;
@@ -127,7 +114,15 @@ inline bool does_file_exist(const std::string& name) {
 	return f.good();
 }
 
-// G
+// Debug function prototypes
+void DebugMatches(
+	const vector<std::pair<Feature, Feature>>& matches,
+	const vector<ImageDescriptor>& images,
+	const Matrix3f& fundamentalMatrix);
+void DebugEpipolarLines(
+	StereoPair stereo,
+	const vector<std::pair<Feature, Feature>>& matches,
+	const vector<ImageDescriptor>& images);
 
 // Main
 int main(int argc, char** argv)
@@ -163,8 +158,8 @@ int main(int argc, char** argv)
 		}
 	}
 
-	vector<ImageDescriptor> images;
 	// Create an image descriptor for each image file we have
+	vector<ImageDescriptor> images;
 	string imageFolder = argv[1];
 
 	// We have the option of saving the feature descriptors out to a file
@@ -200,109 +195,9 @@ int main(int argc, char** argv)
 		// Collect the camera matrices
 		// Note that the camera matrices are not necessarily at the centre of their own coordinate system;
 		// they may have encoded some rigid-body transform in there as well?
-		vector<MatrixXf> calibrationMatrices;
-		string calib = argv[2];
-		ifstream calibFile;
-		calibFile.open(calib);
-		if (calibFile.is_open())
-		{
-			string line;
-			while (getline(calibFile, line))
-			{
-				Matrix3f K;
-				replace(line.begin(), line.end(), '[', ' ');
-				replace(line.begin(), line.end(), ']', ' ');
-				replace(line.begin(), line.end(), ';', ' ');
-				// extract the numbers out of the stringstream
-				vector<string> tokens;
-				string token;
-				stringstream stream;
-				stream << line;
-				while (!stream.eof())
-				{
-					stream >> token;
-					tokens.push_back(token);
-				}
+		ReadCalibrationMatricesFromFile(argv[2], images);
 
-				// if line contains cam
-				if (tokens[0].find("cam0") != string::npos)
-				{
-					// Read calibration and assign to descriptor for image 0
-					K << stod(tokens[1], nullptr), stod(tokens[2], nullptr), stod(tokens[3], nullptr),
-						stod(tokens[4], nullptr), stod(tokens[5], nullptr), stod(tokens[6], nullptr),
-						stod(tokens[7], nullptr), stod(tokens[7], nullptr), stod(tokens[9], nullptr);
-
-					for (auto& img : images)
-					{
-						// Yeah, this could be a lot better, I know
-						if (img.filename.find("0") != string::npos)
-						{
-							img.K = K / 4;
-							img.K(2, 2) = 1;
-							break;
-						}
-					}
-				}
-				else if (tokens[0].find("cam1") != string::npos)
-				{
-					// Read calibration and assign to image 1
-					K << stod(tokens[1], nullptr), stod(tokens[2], nullptr), stod(tokens[3], nullptr),
-						stod(tokens[4], nullptr), stod(tokens[5], nullptr), stod(tokens[6], nullptr),
-						stod(tokens[7], nullptr), stod(tokens[7], nullptr), stod(tokens[9], nullptr);
-					for (auto& img : images)
-					{
-						if (img.filename.find("1") != string::npos)
-						{
-							img.K = K/4;
-							img.K(2, 2) = 1;
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		for (auto& image : images)
-		{
-			Mat img = imread(image.filename, IMREAD_GRAYSCALE);
-			Mat mask = Mat(img.rows, img.cols, CV_8U, 255);
-			
-			vector<Feature> features;
-			FindFASTFeatures(img, features);//FindHarrisCorners(img, 20);
-			if (features.empty())
-			{
-				cout << "No features were found in " << image.filename << endl;
-			}
-			features = ScoreAndClusterFeatures(img, features);
-
-			cout << "Found " << features.size() << " features in " << image.filename << endl;
-
-#ifdef DEBUG_FEATURES
-			Mat img_i = imread(image.filename, IMREAD_GRAYSCALE);
-			for (auto& f : features)
-			{
-				circle(img_i, f.p, 3, (255, 255, 0), -1);
-			}
-
-			// Display
-			imshow("Image - best features", img_i);
-			waitKey(0);
-#endif
-
-			// Create descriptors with scale information for better matching
-
-			// Create descriptors for each feature in the image
-			std::vector<FeatureDescriptor> descriptors;
-			if (!CreateSIFTDescriptors(img, features, descriptors))
-			{
-				cout << "Failed to create feature descriptors for image " << image.filename << endl;
-				continue;
-			}
-
-			image.width = img.cols;
-			image.height = img.rows;
-			image.features = features;
-		}
+		GetImageDescriptorsForImages(images);
 	}
 	// If opted, check for a features file
 	if (featureFileGiven && !featuresRead)
@@ -320,10 +215,8 @@ int main(int argc, char** argv)
 	// THis should be stored in a 2D matrix where the index in the matrix corresponds to array index
 	// and the array holds the fundamental matrix
 	int s = (int)images.size();
-	StereoPair pair;
 	cout << "Matching features for " << images[0].filename << " and " << images[1].filename << endl;
-	std::vector<std::pair<Feature, Feature>> matches2 = MatchDescriptors(images[0].features, images[1].features);
-	std::vector<std::pair<Feature, Feature>> matches;
+	vector<std::pair<Feature, Feature>> matches = MatchDescriptors(images[0].features, images[1].features);
 
 	if (matches.size() < STEREO_OVERLAP_THRESHOLD)
 	{
@@ -331,242 +224,36 @@ int main(int argc, char** argv)
 	}
 	cout << matches.size() << " features found between " << images[0].filename << " and " << images[1].filename << endl;
 
-	// normalise point coords
-	/*for (auto& f : images[0].features)
-	{
-		f.p = Point2f(f.p.x / images[0].width, f.p.y / images[0].width);
-	}
-	for (auto& f : images[1].features)
-	{
-		f.p = Point2f(f.p.x / images[1].width, f.p.y / images[1].width);
-	}
-	for (auto& m : matches)
-	{
-		Feature& f1 = m.first;
-		Feature& f2 = m.second;
-		f1.p = Point2f(f1.p.x / images[0].width, f1.p.y / images[0].width);
-		f2.p = Point2f(f2.p.x / images[1].width, f2.p.y / images[1].width);
-	}*/
-
-
-	//matches.clear();
-	// Adding GT now
-	Feature f1_1;
-	Feature f1_2;
-	f1_1.p = Point2f(88, 75);
-	f1_2.p = Point2f(38, 75);
-	matches.push_back(make_pair(f1_1, f1_2));
-	Feature f2_1;
-	Feature f2_2;
-	f2_1.p = Point2f(134, 320);
-	f2_2.p = Point2f(86, 320);
-	matches.push_back(make_pair(f2_1, f2_2));
-	Feature f3_1;
-	Feature f3_2;
-	f3_1.p = Point2f(107, 425);
-	f3_2.p = Point2f(60, 425);
-	matches.push_back(make_pair(f3_1, f3_2));
-	Feature f4_1;
-	Feature f4_2;
-	f4_1.p = Point2f(565, 336);
-	f4_2.p = Point2f(504, 336);
-	matches.push_back(make_pair(f4_1, f4_2));
-	Feature f5_1;
-	Feature f5_2;
-	f5_1.p = Point2f(643, 138);
-	f5_2.p = Point2f(617, 139);
-	matches.push_back(make_pair(f5_1, f5_2));
-	Feature f6_1;
-	Feature f6_2;
-	f6_1.p = Point2f(439, 129);
-	f6_2.p = Point2f(421, 129);
-	matches.push_back(make_pair(f6_1, f6_2));
-	Feature f7_1;
-	Feature f7_2;
-	f7_1.p = Point2f(268, 34);
-	f7_2.p = Point2f(244, 34);
-	matches.push_back(make_pair(f7_1, f7_2));
-	Feature f8_1;
-	Feature f8_2;
-	f8_1.p = Point2f(291, 239);
-	f8_2.p = Point2f(267, 239);
-	matches.push_back(make_pair(f8_1, f8_2));
-
-
-	// combine matches 1 and 2
-	//matches.insert(matches.end(), matches2.begin(), matches2.end());
-	for (auto m : matches2)
-	{
-		matches.push_back(m);
-	}
-
 	StereoPair stereo;
 	stereo.img1 = images[0];
 	stereo.img2 = images[1];
-
 	// Compute Fundamental matrix
 	Matrix3f fundamentalMatrix;
- 	//if (!FindFundamentalMatrix(matches, fundamentalMatrix))
 	if (!FindFundamentalMatrixWithRANSAC(matches, fundamentalMatrix, stereo))
 	{
 		cout << "Failed to find fundamental matrix for pair " << images[0].filename << " and " << images[1].filename << endl;
 	}
 	cout << "Fundamental matrix found for pair " << images[0].filename << " and " << images[1].filename << endl;
 
-
-	
-
-#ifdef DEBUG_MATCHES
-	// Draw matching features
-	Mat matchImageScored;
-	Mat img_i = imread(images[0].filename, IMREAD_GRAYSCALE);
-	Mat img_j = imread(images[1].filename, IMREAD_GRAYSCALE);
-	hconcat(img_i, img_j, matchImageScored);
-	int offset = img_i.cols;
-	// Draw the features on the image
-	for (unsigned int i = 0; i < matches.size(); ++i)
-	{
-		Feature f1 = matches[i].first;
-		Feature f2 = matches[i].second;
-
-
-		auto f = Vector3f(matches[i].first.p.x, matches[i].first.p.y, 1);
-		auto fprime = Vector3f(matches[i].second.p.x, matches[i].second.p.y, 1);
-
-
-		auto result = fprime.transpose() * fundamentalMatrix * f;
-		std::cout << "reprojection error: " << result << endl;
-
-		f2.p.x += offset;
-
-		circle(matchImageScored, f1.p, 2, (255, 255, 0), -1);
-		circle(matchImageScored, f2.p, 2, (255, 255, 0), -1);
-		line(matchImageScored, f1.p, f2.p, (0, 0, 0), 2, 8, 0);
-		
-		// Debug display
-		imshow("matches", matchImageScored);
-		waitKey(0);
-	}
-	
-	
-#endif
-
-
-
-	// TODO: do we need to put all features into proper image coordinates for this?
-
-
-#ifdef DEBUG_FUNDAMENTAL
-	// Since we use the top 8 to create the fundamental matrix, this is a good test for
-	// non-matching points
-	std::vector<std::pair<Feature, Feature>> temp;
-	temp.insert(temp.end(), matches.begin(), matches.end());
-	//matches.clear();
-	for (auto& m : temp)
-	{
-		auto f = Vector3f(m.first.p.x, m.first.p.y, 1);
-		auto fprime = Vector3f(m.second.p.x, m.second.p.y, 1);
-
-		auto result = fprime.transpose() * fundamentalMatrix * f;
-		std::cout << "reprojection error: " << result << endl;
-		if (abs(result) < FUNDAMENTAL_REPROJECTION_ERROR_THRESHOLD)
-		{
-			matches.push_back(m);
-		}
-	}
-	// This weeds out the bad points, leaving us with only matches that are good to triangulate
-#endif
-	
-	
-	
-	
 	// Compute essential matrix
-	// On wikipedia, it says that E = KT * F * K
-	// this makes sense, since K sends real coords into image coords
-	// But in Lindstrom, it says that it assumes that points have been multiplied
-	// by K inverse, and then we use E ... oh yeah duh
-	// THE K's HAVE NOT BEEN SCALED YOU NUMPTY
+	// E = KT * F * K
 	stereo.F = fundamentalMatrix;
 	stereo.E = stereo.img2.K.transpose() * stereo.F * stereo.img1.K;
 
-#ifdef DEBUG_ESSENTIAL_MATRIX
-
-	// Debug the Essential Matrix now
-	// We do this by drawing the epipolar line from the essential matrix at various depths,
-	// and drawing the matching feature
-	Vector3f t(0, 0, 0);
-	Matrix3f R;
-	R.setZero();
-	DecomposeEssentialMatrix(stereo.E, R, t);
-
-	// verify with the difference between t_skew * R and E
-	// DEBUG
-	std::cout << "Difference between E and t_skew * R:" << endl;
-	Matrix3f t_skew;
-	t_skew << 0, -t[2], t[1],
-		t[2], 0, -t[0],
-		-t[1], t[0], 0;
-	Matrix3f residual = stereo.E - t_skew * R;
-	cout << residual << endl;
-	
-	std::cout << "Rotation: \n" << R << "\nTranslation: \n" << t << endl;
-
-	cout << "E is " << endl << stereo.E << endl << " and E inverse is " << endl << stereo.E.inverse() << endl;
-
-	for (auto& m : matches)
-	{
-		Mat epipolarLines;
-		Mat img_1 = imread(images[0].filename, IMREAD_GRAYSCALE);
-		Mat img_2 = imread(images[1].filename, IMREAD_GRAYSCALE);
-		hconcat(img_1, img_2, epipolarLines);
-		int offset = img_1.cols;
-
-		Point2f img1Point = m.first.p;// / 4;
-		Point2f img2Point = m.second.p;
-		Feature f2 = m.second;
-		//f2.p /= 4;
-		f2.p.x += offset;
-		circle(epipolarLines, img1Point, 6, (255, 255, 0), -1);
-		circle(epipolarLines, f2.p, 6, (255, 255, 0), -1);
-		//cout << "Features are " << img1Point << " and " << f2.p << endl;
-
-		// Here we are NOT normalising
-		// But we are going from image 0 into image 1, as that is the direction in which we computed the fundamental matrix
-		Vector3f projectivePoint;
-		projectivePoint[0] = img1Point.x;
-		projectivePoint[1] = img1Point.y;
-		projectivePoint[2] = 1;
-		Vector3f point = images[0].K.inverse() * projectivePoint;
-		point = point / point[2];
-		//cout << "Starting with " << point << endl;
-		for (double d = 1; d < 10; d += 0.2)
-		{
-			Vector3f eL = point *d;
-			//cout << "depth vector:\n" << eL << endl;
-			Vector3f transformedPoint = R.inverse()* eL - R.inverse()* t; // IS THIS RIGHT?
-			//cout << "transformed:\n" << transformedPoint << endl;
-			transformedPoint /= transformedPoint[2];
-			//cout << "normalised:\n" << transformedPoint << endl;
-			// now project:
-			projectivePoint = images[1].K * transformedPoint;
-			// get u, v from first to bits
-			Point2f reprojection(projectivePoint[0], projectivePoint[1]);
-			//reprojection /= 4;
-			reprojection.x += offset;
-			circle(epipolarLines, reprojection, 2, (255, 255, 0), -1);
-			//cout << "Epipolar line point at depth " << d << " is " << reprojection << endl;
-		}
-
-		// Display
-		imshow("Epipolar line", epipolarLines);
-		waitKey(0);
-	}
-
-	
+	// Cheeky debug if you want it
+#ifdef DEBUG_MATCHES
+	DebugMatches(matches, images, fundamentalMatrix);
 #endif
 
+#ifdef DEBUG_ESSENTIAL_MATRIX
+	DebugEpipolarLines(stereo, matches, images);
+#endif
 
-
+	// So now, run feature detection again, but manually.
+	// We'll define a looser bound on clustering and scoring.
+	// Then get the depth of each point and build up a point cloud of the scene
+	// This all rides on sufficiently many points for a good calibration
+	// of the stereo matrix
 
 
 	for (auto& match : matches)
@@ -695,6 +382,7 @@ int main(int argc, char** argv)
 	
 
 	// Render points
+	vector<Vector3f> pointsToDraw; 
 	pointsToDraw.clear();
 	for (int i = 0; i < s; ++i)
 	{
@@ -742,7 +430,120 @@ int main(int argc, char** argv)
 	return 0;
 }
 
+/* #################################
+    Section for debug functions
+   ################################# */
+void DebugMatches(
+	const vector<std::pair<Feature, Feature>>& matches,
+	const vector<ImageDescriptor>& images,
+	const Matrix3f& fundamentalMatrix)
+{
+	// Draw matching features
+	Mat matchImageScored;
+	Mat img_i = imread(images[0].filename, IMREAD_GRAYSCALE);
+	Mat img_j = imread(images[1].filename, IMREAD_GRAYSCALE);
+	hconcat(img_i, img_j, matchImageScored);
+	int offset = img_i.cols;
+	// Draw the features on the image
+	for (unsigned int i = 0; i < matches.size(); ++i)
+	{
+		Feature f1 = matches[i].first;
+		Feature f2 = matches[i].second;
 
+
+		auto f = Vector3f(matches[i].first.p.x, matches[i].first.p.y, 1);
+		auto fprime = Vector3f(matches[i].second.p.x, matches[i].second.p.y, 1);
+
+
+		auto result = fprime.transpose() * fundamentalMatrix * f;
+		std::cout << "reprojection error: " << result << endl;
+
+		f2.p.x += offset;
+
+		circle(matchImageScored, f1.p, 2, (255, 255, 0), -1);
+		circle(matchImageScored, f2.p, 2, (255, 255, 0), -1);
+		line(matchImageScored, f1.p, f2.p, (0, 0, 0), 2, 8, 0);
+
+		// Debug display
+		imshow("matches", matchImageScored);
+		waitKey(0);
+	}
+}
+
+void DebugEpipolarLines(
+	StereoPair stereo,
+	const vector<std::pair<Feature, Feature>>& matches,
+	const vector<ImageDescriptor>& images)
+{
+	// Debug the Essential Matrix now
+	// We do this by drawing the epipolar line from the essential matrix at various depths,
+	// and drawing the matching feature
+	Vector3f t(0, 0, 0);
+	Matrix3f R;
+	R.setZero();
+	DecomposeEssentialMatrix(stereo.E, R, t);
+
+	// verify with the difference between t_skew * R and E
+	std::cout << "Difference between E and t_skew * R:" << endl;
+	Matrix3f t_skew;
+	t_skew << 0, -t[2], t[1],
+		t[2], 0, -t[0],
+		-t[1], t[0], 0;
+	Matrix3f residual = stereo.E - t_skew * R;
+	cout << residual << endl;
+
+	std::cout << "Rotation: \n" << R << "\nTranslation: \n" << t << endl;
+
+	cout << "E is " << endl << stereo.E << endl << " and E inverse is " << endl << stereo.E.inverse() << endl;
+
+	for (auto& m : matches)
+	{
+		Mat epipolarLines;
+		Mat img_1 = imread(images[0].filename, IMREAD_GRAYSCALE);
+		Mat img_2 = imread(images[1].filename, IMREAD_GRAYSCALE);
+		hconcat(img_1, img_2, epipolarLines);
+		int offset = img_1.cols;
+
+		Point2f img1Point = m.first.p;
+		Point2f img2Point = m.second.p;
+		Feature f2 = m.second;
+		f2.p.x += offset;
+		circle(epipolarLines, img1Point, 6, (255, 255, 0), -1);
+		circle(epipolarLines, f2.p, 6, (255, 255, 0), -1);
+		//cout << "Features are " << img1Point << " and " << f2.p << endl;
+
+		// Here we are NOT normalising
+		// But we are going from image 0 into image 1, as that is the direction in which we computed the fundamental matrix
+		Vector3f projectivePoint;
+		projectivePoint[0] = img1Point.x;
+		projectivePoint[1] = img1Point.y;
+		projectivePoint[2] = 1;
+		Vector3f point = images[0].K.inverse() * projectivePoint;
+		point = point / point[2];
+		//cout << "Starting with " << point << endl;
+		for (double d = 1; d < 10; d += 0.2)
+		{
+			Vector3f eL = point * d;
+			//cout << "depth vector:\n" << eL << endl;
+			Vector3f transformedPoint = R.inverse() * eL - R.inverse() * t; // IS THIS RIGHT?
+			//cout << "transformed:\n" << transformedPoint << endl;
+			transformedPoint /= transformedPoint[2];
+			//cout << "normalised:\n" << transformedPoint << endl;
+			// now project:
+			projectivePoint = images[1].K * transformedPoint;
+			// get u, v from first to bits
+			Point2f reprojection(projectivePoint[0], projectivePoint[1]);
+			//reprojection /= 4;
+			reprojection.x += offset;
+			circle(epipolarLines, reprojection, 2, (255, 255, 0), -1);
+			//cout << "Epipolar line point at depth " << d << " is " << reprojection << endl;
+		}
+
+		// Display
+		imshow("Epipolar line", epipolarLines);
+		waitKey(0);
+	}
+}
 
 
 
@@ -777,7 +578,7 @@ int main(int argc, char** argv)
 	OpenGL helpers for drawing
 	I couldn't figure out how to have this in a different file, so it's all here
 */
-
+/*
 void initWithPoints(const std::vector<Vector3f>& points)
 {
 	GLfloat* vertices = (GLfloat*)malloc(sizeof(GLfloat*)*points.size()*4);
@@ -858,7 +659,7 @@ void initWithPoints(const std::vector<Vector3f>& points)
 	// Specify the background color
 	glClearColor(0, 0, 0, 1);
 }
-/*
+
 void reshape(int width, int height)
 {
 	// Compute aspect ratio of the new window
@@ -910,7 +711,7 @@ void display()
 
 	// Refresh the window
 	glutSwapBuffers();
-}*/
+}
 
 void processKeys(int key, int xx, int yy)
 {
@@ -996,3 +797,4 @@ void renderScene(void)
 
 	glutSwapBuffers();
 }
+*/
