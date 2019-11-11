@@ -669,7 +669,11 @@ bool FeatureCompare(Feature a, Feature b)
 	return a.score > b.score;
 }
 // Actual function
-std::vector<Feature> ScoreAndClusterFeatures(Mat img, vector<Feature>& features)
+std::vector<Feature> ScoreAndClusterFeatures(
+	const Mat& img,
+	vector<Feature>& features,
+	float scoreThreshold,
+	float distanceForWithinCluster)
 {
 	// let's cheat and use opencv to compute the sobel derivative, window size 3,
 	// over the whole image
@@ -735,7 +739,7 @@ std::vector<Feature> ScoreAndClusterFeatures(Mat img, vector<Feature>& features)
 		f.score = minEigenvalue;
 		avgEigen += f.score;
 		// Only keep features that have a score above our threshold
-		if (f.score > ST_THRESH)
+		if (f.score > scoreThreshold)
 		{
 			goodFeatures.push_back(f);
 		}
@@ -757,7 +761,7 @@ std::vector<Feature> ScoreAndClusterFeatures(Mat img, vector<Feature>& features)
 			auto& f2 = goodFeatures[i];
 			int xmargin = (int)abs(f.p.x - f2.p.x);
 			int ymargin = (int)abs(f.p.y - f2.p.y);
-			if (xmargin <= NMS_WINDOW && ymargin <= NMS_WINDOW)
+			if (xmargin <= distanceForWithinCluster && ymargin <= distanceForWithinCluster)
 			{
 				if (f.score < f2.score)
 				{
@@ -1013,7 +1017,10 @@ float DistanceBetweenDescriptors(FeatureDescriptor a, FeatureDescriptor b)
 	return L2_norm(aVec);
 }
 // Actual function
-std::vector<std::pair<Feature, Feature> > MatchDescriptors(std::vector<Feature> list1, std::vector<Feature> list2)
+std::vector<std::pair<Feature, Feature> > MatchDescriptors(
+	std::vector<Feature> list1,
+	std::vector<Feature> list2,
+	float distLimitBetweenMatches)
 {
 	std::vector<std::pair<Feature, Feature> > matches;
 
@@ -1047,7 +1054,7 @@ std::vector<std::pair<Feature, Feature> > MatchDescriptors(std::vector<Feature> 
 		}
 
 		// To match, scores must also be sufficiently similar
-		if (abs(f.score - list2[closest].score) > MAX_DIST_BETWEEN_MATCHES)
+		if (abs(f.score - list2[closest].score) > distLimitBetweenMatches)
 		{
 			continue;
 		}
@@ -1174,7 +1181,7 @@ void GetImageDescriptorsForImages(
 		{
 			cout << "No features were found in " << image.filename << endl;
 		}
-		features = ScoreAndClusterFeatures(img, features);
+		features = ScoreAndClusterFeatures(img, features, ST_THRESH, NMS_WINDOW);
 
 		cout << "Found " << features.size() << " features in " << image.filename << endl;
 

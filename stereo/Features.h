@@ -31,7 +31,7 @@
 #define DESC_SUB_WINDOW 4
 #define ILLUMINANCE_BOUND 0.2f
 #define NN_RATIO 0.8
-#define MAX_DIST_BETWEEN_MATCHES 1000
+#define MAX_DIST_BETWEEN_MATCHES 1000.f
 
 // DOH constants
 #define DOH_WINDOW 11
@@ -164,25 +164,51 @@ bool FeatureCompare(Feature a, Feature b);
 /*
 	Feature Detection functions
 */
-bool FindFASTFeatures(cv::Mat img, std::vector<Feature>& features);
+bool FindFASTFeatures(
+	cv::Mat img,
+	std::vector<Feature>& features);
 
-bool FindDoHFeatures(cv::Mat input, cv::Mat mask, std::vector<Feature>& features);
+bool FindDoHFeatures(
+	cv::Mat input, 
+	cv::Mat mask,
+	std::vector<Feature>& features);
 
-std::vector<Feature> ClusterFeatures(std::vector<Feature>& features, const int windowSize);
+std::vector<Feature> ClusterFeatures(
+	std::vector<Feature>& features,
+	const int windowSize);
 
-std::vector<Feature> FindHarrisCorners(const cv::Mat& input, int nmsWindowSize);
+std::vector<Feature> FindHarrisCorners(
+	const cv::Mat& input,
+	int nmsWindowSize);
 
-std::vector<Feature> ScoreAndClusterFeatures(cv::Mat img, std::vector<Feature>& features);
+std::vector<Feature> ScoreAndClusterFeatures(
+	const cv::Mat& img,
+	std::vector<Feature>& features,
+	float scoreThreshold,
+	float distanceForWithinCluster);
 
-bool CreateSIFTDescriptors(cv::Mat img, std::vector<Feature>& features, std::vector<FeatureDescriptor>& descriptors);
+bool CreateSIFTDescriptors(
+	cv::Mat img,
+	std::vector<Feature>& features,
+	std::vector<FeatureDescriptor>& descriptors);
 
-std::vector<std::pair<Feature, Feature> > MatchDescriptors(std::vector<Feature> list1, std::vector<Feature> list2);
+std::vector<std::pair<Feature, Feature> > MatchDescriptors(
+	std::vector<Feature> list1, std::vector<Feature> list2, float distLimitBetweenMatches);
 
-void GetImageDescriptorsForFile(const std::vector<std::string>& filenames, const std::string& folder, std::vector<ImageDescriptor>& images, const std::vector<Eigen::MatrixXf>& calibrationMatrices, const cv::Mat& mask);
+void GetImageDescriptorsForFile(
+	const std::vector<std::string>& filenames,
+	const std::string& folder,
+	std::vector<ImageDescriptor>& images,
+	const std::vector<Eigen::MatrixXf>& calibrationMatrices,
+	const cv::Mat& mask);
 
-bool SaveImageDescriptorsToFile(const std::string& filename, std::vector<ImageDescriptor>& images);
+bool SaveImageDescriptorsToFile(
+	const std::string& filename,
+	std::vector<ImageDescriptor>& images);
 
-bool ReadDescriptorsFromFile(const std::string& filename, std::vector<ImageDescriptor>& images);
+bool ReadDescriptorsFromFile(
+	const std::string& filename,
+	std::vector<ImageDescriptor>& images);
 
 void GetImageDescriptorsForImages(_Inout_ std::vector<ImageDescriptor>& images);
 

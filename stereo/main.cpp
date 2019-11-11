@@ -37,6 +37,10 @@ using namespace Eigen;
 #define ROTATION_STEP 0.2f
 #define TRANSLATION_STEP 0.1f
 
+#define TRIANGULATION_POINT_CLOUD
+#define RECTIFICATION_DEPTH_MAP
+
+
 /*GLuint buffer = 0;
 GLuint vPos;
 GLuint program;
@@ -136,7 +140,7 @@ int main(int argc, char** argv)
 	}
 	string featurePath = "";
 	bool featureFileGiven = false;
-	string pointCloudOuputPath = "";
+	string pointCloudOutputPath = "";
 	Mat maskImage;
 	if (argc >= 3)
 	{
@@ -153,7 +157,7 @@ int main(int argc, char** argv)
 			}
 			if (strcmp(argv[i], "-output") == 0)
 			{
-				pointCloudOuputPath = string(argv[i + 1]);
+				pointCloudOutputPath = string(argv[i + 1]);
 			}
 		}
 	}
@@ -216,7 +220,7 @@ int main(int argc, char** argv)
 	// and the array holds the fundamental matrix
 	int s = (int)images.size();
 	cout << "Matching features for " << images[0].filename << " and " << images[1].filename << endl;
-	vector<std::pair<Feature, Feature>> matches = MatchDescriptors(images[0].features, images[1].features);
+	vector<std::pair<Feature, Feature>> matches = MatchDescriptors(images[0].features, images[1].features, MAX_DIST_BETWEEN_MATCHES);
 
 	if (matches.size() < STEREO_OVERLAP_THRESHOLD)
 	{
@@ -249,13 +253,91 @@ int main(int argc, char** argv)
 	DebugEpipolarLines(stereo, matches, images);
 #endif
 
+#ifdef TRIANGULATION_POINT_CLOUD
 	// So now, run feature detection again, but manually.
 	// We'll define a looser bound on clustering and scoring.
 	// Then get the depth of each point and build up a point cloud of the scene
 	// This all rides on sufficiently many points for a good calibration
 	// of the stereo matrix
 
+	for (auto& image : images)
+	{
+		Mat img = imread(image.filename, IMREAD_GRAYSCALE);
 
+		vector<Feature> features;
+		FindFASTFeatures(img, features);
+		if (features.empty())
+		{
+			cout << "No features were found in " << image.filename << endl;
+		}
+		// Refactor this to take params
+		features = ScoreAndClusterFeatures(img, features, 500, 2);
+
+		// Create descriptors with scale information for better matching
+
+		// Create descriptors for each feature in the image
+		std::vector<FeatureDescriptor> descriptors;
+		if (!CreateSIFTDescriptors(img, features, descriptors))
+		{
+			cout << "Failed to create feature descriptors for image " << image.filename << endl;
+			continue;
+		}
+
+		image.width = img.cols;
+		image.height = img.rows;
+		image.features = features;
+	}
+
+	// Now do some cheeky feature matching again
+	// Some features won't match well, but that's ok
+	vector<std::pair<Feature, Feature>> newMatches;
+	newMatches = MatchDescriptors(images[0].features, images[1].features, MAX_DIST_BETWEEN_MATCHES*2);
+
+	// Now for each match, get the depth in the frame of the first image
+
+	/*
+	// Write these points out to a text file
+	if (pointCloudOutputPath.size() == 0)
+	{
+		cout << "No output path given! Ending now ..." << endl;
+		exit(0);
+	}
+	std::ofstream pointFile(pointCloudOutputPath + "\\point_cloud.txt");
+	if (pointFile.is_open())
+	{
+		for (int i = 0; i < pointsToDraw.size(); ++i)
+		{
+			auto& p = pointsToDraw[i];
+			// get normals
+			Vector3f normal = p;
+			normal *= 1 / sqrt(normal[0] * normal[0] + normal[1]*normal[1] + normal[2]*normal[2]);
+			pointFile << p[0] << " " << p[1] << " " << p[2] << " " << normal[0] << " " << normal[1] << " " << normal[2];
+			if (i < pointsToDraw.size() - 1)
+			{
+				pointFile << endl;
+			}
+		}
+		pointFile.close();
+	}
+	*/
+#endif
+
+#ifdef RECTIFICATION_DEPTH_MAP
+	// So now, rectify the images so that epipolar lines are corresponding horizontal
+	// lines. This means that to compute 'depth', we just need the horizontal
+	// distance between two pixels. This can map to physical depth, but to create
+	// a depth map, or a point cloud to display, we don't necessarily care about that
+
+	// Compute rectification rotations
+
+	// Apply to images
+	
+	// Compute depth map
+
+	// Show depth map
+
+	// save depth map?
+#endif
 	for (auto& match : matches)
 	{
 		Mat epipolarLines;
@@ -408,24 +490,7 @@ int main(int argc, char** argv)
 		break;
 	}
 
-	// Write these points out to a text file
-	std::ofstream pointFile(pointCloudOuputPath + "\\point_cloud.txt");
-	if (pointFile.is_open())
-	{
-		for (int i = 0; i < pointsToDraw.size(); ++i)
-		{
-			auto& p = pointsToDraw[i];
-			// get normals
-			Vector3f normal = p;
-			normal *= 1 / sqrt(normal[0] * normal[0] + normal[1]*normal[1] + normal[2]*normal[2]);
-			pointFile << p[0] << " " << p[1] << " " << p[2] << " " << normal[0] << " " << normal[1] << " " << normal[2];
-			if (i < pointsToDraw.size() - 1)
-			{
-				pointFile << endl;
-			}
-		}
-		pointFile.close();
-	}
+	
 
 	return 0;
 }
