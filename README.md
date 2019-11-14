@@ -140,14 +140,22 @@ Firstly, there is [Hartley and Sturm's original 1997 paper on triangulation](htt
 Then came [Kanatani's paper on triangulation](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.220.724&rep=rep1&type=pdf), which aimed to improve on Hartley and Sturm with an iterative algorithm. Kanatani's idea is based, instead of estimating the point we are trying to emulate, estimating the delta we need to add to our detected point to get to the expected point. The diference is that framing the problem in this way allows one to algebraically rework it into a pair of equations in *F*, *x* and *x'* that can easily be iterated on. 
 
 Finally, [Peter Lindstrom improved on Kanatani's method](https://e-reports-ext.llnl.gov/pdf/384387.pdf) by designing a non-iterative quadratic solution that is faster than Hartley and Sturm, and more stable. Technically, it is iterative, but in two iterations it gets numerically close enough for reasonable precision and so Lindstrom just optimised two iterations into the one closed-form algorithm. I'll be honest - I don't really understand this algorithm yet. But I can code it, and that matters more. Can always learn the theory well later. It's based, again, on minimising the delta between the detected points and expected corresponding points, subject to the epipolar constraint. But this time, Lindstrom reworks this equation using [Lagrange Multipliers](https://en.wikipedia.org/wiki/Lagrange_multiplier) to show that we are projecting the detected points onto epipolar lines through the expected points, and from this we can create a quadratic that when solves gives the update that forms the delta to add to the detected points to get the expected points. If this doesn't make sense, that's fine - I don't get it either.  
+TODO: explain this better
 
 # Point Cloud to Mesh
 Once we've triangulated every matching pair of points, we transform each of these into the frame of the first camera (or second; the point is we pick one and stick with it). This is our point cloud! We can render this in something like [MeshLab](http://www.meshlab.net/), which takes .txt files of points in the format
 
 Px Py Pz
 
-and so on. But then it's hard to see how well we captured the scene. So let's construct a mesh. 
+and so on. When viewing this it can be a bit difficult to see that we have the right depths.
 
+# Rectification
+Another thing we can do to get the depth of a scene - and this is denser, as we get depth pixel-by-pixel. With this we create what's called a __Disparity Map__ which is essentially the image but every pixel represents the depth at that point. 
 
+So, what is [Rectification](http://www.sci.utah.edu/~gerig/CS6320-S2012/Materials/CS6320-CV-F2012-Rectification.pdf)? This is the process of [rotating each image so that objects in the images align](https://en.wikipedia.org/wiki/Image_rectification#/media/File:2DRectificationBAG.jpg) - then, when we want to find the depth of corresponding pixels, they lie in the same y-coordinate in each image, and the depth is directly proportional to the difference in x-coordinates. So in the same y-coordinate in each image, find the pixel that is most similar, and compute the x difference - and make sure that it is positive. You've got depth! How easy is that?!
+
+So let's go through the process of computing the __rectified__ images. Now that we have the Fundamental and Essential matrices, it's pretty simple. 
+
+# Results and Conclusion
 
 
