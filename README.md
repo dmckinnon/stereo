@@ -132,22 +132,22 @@ Now this may still not be the best way, but it's a decent method I thought of.
 
 
 #### Oops
-Turns out I'm rather wrong. The usual Euclidean geometric principles I'm relying on don't actually apply in Projective Geometry. (why?)
-Let's see what the actual literature says. 
+Turns out I'm rather wrong. Or rather, my first idea was close, my third idea was even close, but there's more to it. 
+Let's see what the actual literature says. The idea is basically *how can we tweak the points we are triangulating to minimise the distance between the rays, before we actually solve for it?*
+That is, we could just find the minimal distance between the rays. But the points we are triangulating aren't necessarily correct. But they are probably close to the theoretical correct points. Can we adjust them closer to the theoretical best?
 
 Firstly, there is [Hartley and Sturm's original 1997 paper on triangulation](https://users.cecs.anu.edu.au/~hartley/Papers/triangulation/triangulation.pdf), which details several methods and presents an optimal one. This is complicated to explain here, but the crux is that instead of adjusting depth for minimisation, they realised that there are a pair of true points that the feature points are approximating. Let's adjust the feature points such that we minimise the distance between the feature points and the theoretical true points. Their formulation for this problem results in a 6-degree polynomial, which must be solved to find the minimum. The advantage of their algorithm is that it is closed form and requires no iteration. 
 
 Then came [Kanatani's paper on triangulation](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.220.724&rep=rep1&type=pdf), which aimed to improve on Hartley and Sturm with an iterative algorithm. Kanatani's idea is based, instead of estimating the point we are trying to emulate, estimating the delta we need to add to our detected point to get to the expected point. The diference is that framing the problem in this way allows one to algebraically rework it into a pair of equations in *F*, *x* and *x'* that can easily be iterated on. 
 
 Finally, [Peter Lindstrom improved on Kanatani's method](https://e-reports-ext.llnl.gov/pdf/384387.pdf) by designing a non-iterative quadratic solution that is faster than Hartley and Sturm, and more stable. Technically, it is iterative, but in two iterations it gets numerically close enough for reasonable precision and so Lindstrom just optimised two iterations into the one closed-form algorithm. I'll be honest - I don't really understand this algorithm yet. But I can code it, and that matters more. Can always learn the theory well later. It's based, again, on minimising the delta between the detected points and expected corresponding points, subject to the epipolar constraint. But this time, Lindstrom reworks this equation using [Lagrange Multipliers](https://en.wikipedia.org/wiki/Lagrange_multiplier) to show that we are projecting the detected points onto epipolar lines through the expected points, and from this we can create a quadratic that when solves gives the update that forms the delta to add to the detected points to get the expected points. If this doesn't make sense, that's fine - I don't get it either.  
-TODO: explain this better
 
 # Point Cloud to Mesh
 Once we've triangulated every matching pair of points, we transform each of these into the frame of the first camera (or second; the point is we pick one and stick with it). This is our point cloud! We can render this in something like [MeshLab](http://www.meshlab.net/), which takes .txt files of points in the format
 
-Px Py Pz
+Px Py Pz Nx Ny Nz
 
-and so on. When viewing this it can be a bit difficult to see that we have the right depths.
+and so on. When viewing this it can be a bit difficult to see that we have the right depths. What are the *N*'s above? These are the x, y, z values for the *normal* of the point - that is, the direction of the vector that is perpendicular to the plane the point sits on. If this doesn't make sense, you can ignore it. 
 
 # Rectification
 Another thing we can do to get the depth of a scene - and this is denser, as we get depth pixel-by-pixel. With this we create what's called a __Disparity Map__ which is essentially the image but every pixel represents the depth at that point. 
