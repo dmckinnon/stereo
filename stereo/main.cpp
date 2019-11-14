@@ -57,6 +57,7 @@ using namespace Eigen;
 
 	Output:
 	- depth-map as an image
+	- triangulated point cloud for features
 
 	Steps:
 
@@ -74,11 +75,11 @@ using namespace Eigen;
 
 	Rectification
 		
-	Depth-map
 
 	TODO:
 	- rectification
 	- write up Lindstrom
+	- lovely comments
 
 */
 
@@ -362,6 +363,14 @@ int main(int argc, char** argv)
 	// Apply to images
 	
 	// Compute depth map
+	// Once rectified, depth is easily computed as
+	// d = f*B/Z
+	// where f is the focal length, which we get from the calibration matrix,
+	// B is the baseline - that is, the distance between the cameras (the length of
+	// the translation vector of the transform between cameras),
+	// and Z is, well, the Z coordinate. 
+	// But we don't know the Z coordinate? 
+	// Well, we estimate that by searching for matching pixels along the line. 
 
 	// Show depth map
 
