@@ -1,27 +1,38 @@
 # Stereoscopy
 
-This exercise is for learning all about stereoscopic depth maps, and, if it gets to it, scene reconstruction from multiple views.
-The basic idea is that you have multiple views of the same scene, and you know where your cameras are relative to each other - using this
+This exercise is for learning all about stereoscopic depth maps. The basic idea is that you have multiple views of the same scene, and you know where your cameras are relative to each other - using this
 information, you can determine the depth (to within some error bound) of any point within the image. For this, the cameras must be
-[calibrated](https://github.com/dmckinnon/calibration/blob/master/README.md) instrinsically, and extrinsically (meaning you know the
- rigid-body transformation from one camera to the other).
+[calibrated](https://github.com/dmckinnon/calibration/blob/master/README.md) instrinsically. It can be helpful to know what's called the __camera extrinsics__ - that is, the 3D transformation to move from one camera to the other - but this is not necessary, as we can derive this just from the scene (Assuming the images overlap sufficiently).
  
 I won't be following any specific paper; rather, just bringing in the theory here and there where necessary. I'll try to explain as best
 I can, but better than to read my explanations is to read the theory behind it. The dataset I'm working from is [this one](http://vision.middlebury.edu/stereo/data/scenes2014/) - it's superb, it has a lot of high quality images of objects, and complete calibration data for each view. [Here is another dataset](https://vision.in.tum.de/data/datasets/3dreconstruction) - this one does multiple views, not just two. It's harder for the features I'm going to be using, but it's worth a shot if you want to expand on this tutorial. 
 For displaying images, I'm using OpenCV; [here's how to install it on Windows 10](https://www.youtube.com/watch?v=MXqpHIMdKfU&feature=youtu.be).
 
+### Building and running
+I've included the .vcxproj if you're a visual studio user, to just grab straight out of the box. You'll need to install opencv/get the headers and the libs and dlls for it, and modify the paths correctly - look in project properties, under includes and linker. 
+While I did this on Windows in Visual Studio, the only thing that might be platform dependent is how I grab the file path for the input data - all the algorithms etc are independent of platform. The only dependencies otherwise are Eigen and OpenCV, just for a few things like the Mat types, Gaussian blur, the Sobel operator, etc. 
+
 # Contents:
-to add
+
+- [Overview](https://github.com/dmckinnon/stereo#overview)
+- [Feature Description and Matching](https://github.com/dmckinnon/stereo#feature-description-and-matching)
+- [Fundamental Matrix, or Essential Matrix](https://github.com/dmckinnon/stereo#fundamental-matrix-or-essential-matrix)
+- [Triangulation](https://github.com/dmckinnon/stereo#triangulation)
+- [Rectification](https://github.com/dmckinnon/stereo#rectification)
+- [Conclusion](https://github.com/dmckinnon/stereo#results-and-conclusion)
+
 
 # Overview
 To get a depth map - that is, an image that contains the depth of every point in a scene at each pixel - one needs at least two views, and calibrated cameras. 
-The method is then to detect common elements between the two images (commonly called 'Features' - see the next section), and for those
-common elements that can easily be found in both, use the knowledge we have about how the two cameras are situated with respect to 
-where each spot is to figure out where it is in 3D space. To put this more clearly, let's say two cameras are both looking at my face 
+One method is to detect common elements between the two images (commonly called 'Features' - see the next section), and for those
+common elements that can easily be found in both, we can derive a relationship between the two views - namely, how one is situated relative to the other. From this and the camera caliberation matrices we can figure out the transform (rotation and translation) in 3D between the cameras. Once we know this, we can figure out the depth of each Feature in the cameras. To put this more clearly, let's say two cameras are both looking at my face 
 from an angle slightly off center - one to the left, one to the right. They can both see my nose. Since we know the transform from one camera
 to the other, and each camera can project a ray through where my nose is, we can compute the intersection of those rays to say that my
-nose is a depth *d* from the cameras. Repeat for each point that can be detected in both images, interpolate for anything in between, 
-and bam, there's your depth map. 
+nose is a depth *d* from the cameras. Repeat for each feature that can be detected in both images, interpolate for anything in between, 
+and bam, there's your depth map. This is called __Triangulation__.
+
+
+Another method does something slightly different, and is called __Rectification__. Once again, we find how the two images relate, but now we warp both images. It's easy to picture a couple of cameras facing the same scene from different angles. Well, we transform the images so it's as if the cameras are both on a line facing exactly the same way, and they take very warped pictures (like they looked through some awkward piece of glass) of the same thing from different angles. When we warp them the right way, we can get the images to line up perfectly so that horizontal lines in the images correspond, and the depth of a particular pixel is related to the difference between its *x* coordinates in each image. In this way we can get the depth of every pixel easily. Bam, depth image. 
 
 The following sections break this down into greater detail, and go over the major components of my code. 
 
@@ -45,14 +56,10 @@ There are a lot of different types of features, based on how you look for them.
 
 There are plenty more. Some are simple, some are ... rather complex (read the wikipedia page for SIFT features, and enjoy). They each might find slightly different things, but in general, what 'feature detectors' aim to do is find points in an image that are sufficiently distinct that you can easily find that same feature again in another image - a future one, or the other of a stereo pair, for example. Features are distinct things like corners (of a table, of an eye, of a leaf, whatever), or edges, or points in the image where there is a lot of change in more than just one direction. To give an example of what is not a feature, think of a blank wall. Take a small part of it. Could you find that bit again on the wall? That exact bit? It's not very distinct, so you likely couldn't. Then take a picture of someone's face. If I gave you a small image snippet containing just a bit of the corner of an eye, you'd find where it fit very quickly. AIShack has a [rather good overview](http://aishack.in/tutorials/features/) of the general theory of features.
 
-In [my other tutorial](https://github.com/dmckinnon/stitch) I used FAST features, also called FAST corners. If you want a quick overview, see my other tutorial or OpenCV's [Explanation of FAST](https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_feature2d/py_fast/py_fast.html). They worked excellently there because panorama images typically have a lot of things with sharp corners. But for this tutorial, I'm going to use DoH features. Why? Just to try another type. 
+In [my other tutorial](https://github.com/dmckinnon/stitch) I used FAST features, also called FAST corners. If you want a quick overview, see my other tutorial or OpenCV's [Explanation of FAST](https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_feature2d/py_fast/py_fast.html). 
+Here's part of it copied and pasted:
 
-The [Determinant of the Hessian](https://milania.de/blog/Introduction_to_the_Hessian_feature_detector_for_finding_blobs_in_an_image) is a good place to start. This detector is designed to find feature 'blobs', and not corners. As the link says, 
-"So, what exactly is a blob in an image? It is a homogeneous area with roughly equal intensity values compared to the surrounding". What does this mean? An area of pixels all roughly the same shade, surrounded by pixels clearly not the same shade. Consider, say, a nose - one sees a dark blob up the nostril. All pixels would be roughly the same amount of dark, surrounded by lighter skin pixels. But a blob need not be a circle - rather, any region of relatively uniform intensity. 
-
-A brief explanation for what the Determinant of Hessian detector is (since that article goes into the deeper details): the Hessian matrix is a matrix of second-order derivatives around a point (*x*, *y*). When you are looking at second derivatives in the 2 dimensional case, you're looking at the curvature of the function. As that, with this - we are considering the local curvative of a 3 dimensional function (a function in two variables). We need the Hessian matrix *H*, a directional vector *v* for the direction we care about, and a location (*x*, *y*), and compute *H* at this point in direction of *v* by *v*^T * *H* * *v*. The eigenvectors of this then describe the vectors of highest and lowest curvature. But high curvature describes edges, in an image! If both eigenvalues are large, then we have strong curvature in every direction, and likely have an interest patch. Recalling that the determinant of a matrix equates to the product of its eigenvalues; hence, if the determinant of the hessian matrix for a patch is large, both eigenvalues are large (probably) and we have strong curvature. Label this point a feature!
-
-The full Determinant of Hessian detector is more detailed and nuanced than this; this is just a high level overview. 
+The idea behind FAST is that corners usually have two lines leading away from them, and that the intensity of the pixels in one of the two angles created by those lines will be either lighter or darker than the other. For example, think of the corner of a roof with the sun above. Two lines (the roof edges) come out from the corner, and below will be darker than above. The way a FAST feature detector works is that for each pixel, it scans a circle of 16 pixels around it, about 3 pixels radius, and compares the intensities to the centre intensity (plus or minus a threshold). If there is a stretch of sequential pixels 12 or more in length that are all of greater intensity (plus a threshold) than the centre, or lesser intensity (minus a threshold) than the centre, this is deemed a FEATURE. (OpenCV's explanation has some better visuals)
 
 
 # Feature Description and Matching
@@ -100,22 +107,19 @@ Now we have to get the features from the left image and features from the right 
 When we have found the closest and second closest right-image features for a particular left-image feature, we take the ratio of their distances to the left-image feature to compare them. If DistanceToClosestRightImageFeature / DistanceToSecondClosestRightImageFeature < 0.8, this is considered a strong enough match, and we store these matching left and right features together. What is this ratio test? This was developed by Lowe, who also invented SIFT. His reasoning was that for this match to be considered strong, the feature closest in the descriptor space must be the closest feature by a clear bound - that is, it stands out and is obviously the closest, and not like "oh, it's a tiny bit closer than this other one". Mathematically, the closest feature should be less than 80 percent of the next closest feature. 
 
 # Fundamental Matrix, or Essential Matrix
-Since we have a calibration, we're technically finding the [Essential matrix, but we can still find the Fundamental matrix](https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf). These matrices are basically fancy names for "the 3D transform from one camera to another". If we have two cameras, *C_0* and *C_1*, situated at two points in space looking at the same thing, then there exists some rigid-body transform that takes coordinates in the frame of *C_0* and puts them into the frame of *C_1*. A rigid-body transform is basically a rotation and a translation - or a slide. You can imagine sitting two ye olde-timey cameras on a table, pointing at, say, a wall nearby. They might be at some angle to each other. Grab one, turn it a bit, then slide it, and bam, it's in exactly the same position as the other, facing the same way (assuming these are magical cameras that can move through each other). That's what this matrix does. The __Essential Matrix__ takes points projected from a calibrated camera to the projective plane for another calibrated camera (that is, you need the camera calibration matrix). The __Fundamental Matrix__ doesn't care about calibration, and takes points in the projective image plane for one camera to the projective image plane of the other camera. 
+Since we have a calibration, we're technically finding the [Essential matrix, but we can still find the Fundamental matrix](https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf). These matrices are basically fancy names for "the 3D transform from one camera to another". If we have two cameras, *C_0* and *C_1*, situated at two points in space looking at the same thing, then there exists some rigid-body transform that takes coordinates in the frame of *C_0* and puts them into the frame of *C_1*. A rigid-body transform is basically a rotation and a translation - or a slide. You can imagine sitting two ye olde-timey cameras on a table, pointing at, say, a wall nearby. They might be at some angle to each other. Grab one, turn it a bit, then slide it, and bam, it's in exactly the same position as the other, facing the same way (assuming these are magical cameras that can move through each other). That's what this matrix does. The __Essential Matrix__ takes 3D points from one camera frame, and puts them in the other's frame. The __Fundamental Matrix__ doesn't care about calibration, and takes points in the projective image plane for one camera to the projective image plane of the other camera. To convert between the two, you need the [intrinsic camera matrix](https://www.mathworks.com/help/vision/ug/camera-calibration.html). Basically what this matrix does is it converts 3D points into pixel points, or pixel points into 3D rays (since from a single pixel, you can't know the depth, so you have a depthless ray). If we have an essential matrix *E* for a camera pair, a fundamental matrix *F* for the same cameras, and calibration matrices (or intrinsic matrices) *K* and *K'*, then these relate by [*E* = (*K'* ^T) *F* *K*](https://en.wikipedia.org/wiki/Fundamental_matrix_(computer_vision)), where *K*^T means *K* transposed. 
+
 
 We compute this with an algorithm called the [8-Point Algorithm](https://en.wikipedia.org/wiki/Eight-point_algorithm), designed by [Hartley](http://www.cs.cmu.edu/afs/andrew/scs/cs/15-463/f07/proj_final/www/amichals/fundamental.pdf) ([Here's another way of framing it](https://cs.adelaide.edu.au/~wojtek/papers/pami-nals2.pdf)). 
 
-This algorithm works in a very similar way to how we find a homography between the images, except that we have a different equation. If we have corresponding points *x* and *x'* and fundamental matrix *F* then these relate by *x**F**x'* = __0__. Using this constraint we can form a system of linear equations for each element of *F*. Then we use our old friend, [SVD](https://en.wikipedia.org/wiki/Singular_value_decomposition) to compute a result for *F*. Note that the points *x* and *x'* should be normalised to have zero mean and standard deviation of 1 (I think) to remove the possibility of numerical error. This can come from some points having values of 1000, or so, and others 0.1. An error of a half affects one point significantly more than the other, but shouldn't. 
-
-Now, one extra thing to note here. For the data set I'm using, we get 3x4 projection matrices *P* that transform 2D homogeneous coordinates from the image, (*x*, *y*, 1) in normalised pixel space, to 3D homogenous coordinates in real-world space, (*X*, *Y*, *Z*, 1) - this is in the real world in the same coordinate system that the camera's location is in. 
-
-What's up with this? How does this work? Well, basically *P* encodes all this data in one hit. We can write *P* = *K*[R|t] to say that *P* takes a homogeneous 3D vector, rotates and translates it (this is the R|t section), and then uses *K* to convert it to homgeneous 2D image coordinates. Hartley And Zisserman's supposedly magical book Multiple View Geometry does explain this on page 158, and the surrounding chapter, but my goodness that is a dense book. [Others do a better job](http://ksimek.github.io/2012/08/14/decompose/) of explaining, without the density. 
+This algorithm works in a very similar way to how we [find a homography between the images](https://github.com/dmckinnon/stitch#finding-the-best-transform), except that we have a different equation. If we have corresponding points *x* and *x'* and fundamental matrix *F* then these relate by *x**F**x'* = __0__. Using this constraint we can form a system of linear equations for each element of *F*. Then we use our old friend, [SVD](https://en.wikipedia.org/wiki/Singular_value_decomposition) to compute a result for *F*. Note that the points *x* and *x'* should be normalised to have zero mean and standard deviation of 1 to remove the possibility of numerical error. This can come from some points having values of 1000, or so, and others 0.1. An error of a half affects one point significantly more than the other, but shouldn't. 
 
 
 # Triangulation
-Once we have the Fundamental Matrix or Essential Matric we can triangulate the points. So triangulation is basically the idea of we have several known points *P_i*, and an unknown point *X*, and we know where *X* is relative to each *P_i*, so we use that to figure out our best approximation for *X*. I have a couple of ideas for this algorithm, and I'm going to try those before reading the literature, to see if I can figure it out. 
+Once we have the Fundamental Matrix or Essential Matrix we can triangulate the points. So triangulation is basically the idea that we know where the same point is in each image, but not where it is in 3D space. But we can get the depthless ray for the point in each image space, and presumably, where those rays cross or somewhere near, is where the point is, and we can measure the depth along the ray and bam. 
 
 #### First idea:
-We know that *X* lies on a ray from *C_i*, being camera *i*, through the point *P_i* in the image *i*. So if we have two images, from cameras *C_0* and *C_1*, and we know the transform from camera 0 to camera 1 (which we are given at the start or can compute), then surely we can just equate these two rays to find the point of intersection?
+We know that the 3D point *X* lies on a ray from *C_i*, being camera *i*, through the point *P_i* in the image *i*. So if we have two images, from cameras *C_0* and *C_1*, and we know the transform from camera 0 to camera 1 (which we are given at the start or can compute), then surely we can just equate these two rays to find the point of intersection?
 
 Good guess, but no, I was wrong with this. They may not be perfectly equal (in an ideal world, they are, but this is obviously not ideal). So they may never have intersection. Next!
 
@@ -132,7 +136,7 @@ Now this may still not be the best way, but it's a decent method I thought of.
 
 
 #### Oops
-Turns out I'm rather wrong. Or rather, my first idea was close, my third idea was even close, but there's more to it. 
+Turns out I'm rather wrong. Or rather, my first idea was close, my third idea was even closer, but there's more to it. 
 Let's see what the actual literature says. The idea is basically *how can we tweak the points we are triangulating to minimise the distance between the rays, before we actually solve for it?*
 That is, we could just find the minimal distance between the rays. But the points we are triangulating aren't necessarily correct. But they are probably close to the theoretical correct points. Can we adjust them closer to the theoretical best?
 
@@ -142,20 +146,39 @@ Then came [Kanatani's paper on triangulation](http://citeseerx.ist.psu.edu/viewd
 
 Finally, [Peter Lindstrom improved on Kanatani's method](https://e-reports-ext.llnl.gov/pdf/384387.pdf) by designing a non-iterative quadratic solution that is faster than Hartley and Sturm, and more stable. Technically, it is iterative, but in two iterations it gets numerically close enough for reasonable precision and so Lindstrom just optimised two iterations into the one closed-form algorithm. I'll be honest - I don't really understand this algorithm yet. But I can code it, and that matters more. Can always learn the theory well later. It's based, again, on minimising the delta between the detected points and expected corresponding points, subject to the epipolar constraint. But this time, Lindstrom reworks this equation using [Lagrange Multipliers](https://en.wikipedia.org/wiki/Lagrange_multiplier) to show that we are projecting the detected points onto epipolar lines through the expected points, and from this we can create a quadratic that when solves gives the update that forms the delta to add to the detected points to get the expected points. If this doesn't make sense, that's fine - I don't get it either.  
 
-# Point Cloud to Mesh
-Once we've triangulated every matching pair of points, we transform each of these into the frame of the first camera (or second; the point is we pick one and stick with it). This is our point cloud! We can render this in something like [MeshLab](http://www.meshlab.net/), which takes .txt files of points in the format
-
-Px Py Pz Nx Ny Nz
-
-and so on. When viewing this it can be a bit difficult to see that we have the right depths. What are the *N*'s above? These are the x, y, z values for the *normal* of the point - that is, the direction of the vector that is perpendicular to the plane the point sits on. If this doesn't make sense, you can ignore it. 
-
 # Rectification
 Another thing we can do to get the depth of a scene - and this is denser, as we get depth pixel-by-pixel. With this we create what's called a __Disparity Map__ which is essentially the image but every pixel represents the depth at that point. 
 
 So, what is [Rectification](http://www.sci.utah.edu/~gerig/CS6320-S2012/Materials/CS6320-CV-F2012-Rectification.pdf)? This is the process of [rotating each image so that objects in the images align](https://en.wikipedia.org/wiki/Image_rectification#/media/File:2DRectificationBAG.jpg) - then, when we want to find the depth of corresponding pixels, they lie in the same y-coordinate in each image, and the depth is directly proportional to the difference in x-coordinates. So in the same y-coordinate in each image, find the pixel that is most similar, and compute the x difference - and make sure that it is positive. You've got depth! How easy is that?!
 
-So let's go through the process of computing the __rectified__ images. Now that we have the Fundamental and Essential matrices, it's pretty simple. 
+So let's go through the process of computing the __rectified__ images. Now that we have the Fundamental and Essential matrices, it's pretty simple.
+
+Rectified images are just those that have a baseline parallel to the image planes (visually, both cameras are facing forward at the same up/down angle, not looking toward or away from each other at all), and corresponding points in each image have exactly the same vertical coordinates. 
+To do this, we need to rotate and twist the images as seen [here](https://en.wikipedia.org/wiki/Image_rectification#/media/File:2DRectificationBAG.jpg). There are multiple strategies to compute these rotations and twists, as seen in the various links here; I'm going with the ever-popular [Zhang's method](http://dev.ipol.im/~morel/Dossier_MVA_2011_Cours_Transparents_Documents/2011_Cours7_Document2_Loop-Zhang-CVPR1999.pdf), as his papers are succinct, straightforward, and missing unnecessary fluff or obscurity. They're clearer than most I read. 
+
+According to Zhang, we need a [homography](https://en.wikipedia.org/wiki/Homography_(computer_vision)) for each image. In layman's terms, a homography is simply a [transformation between two planes in 3D space](http://www.cs.toronto.edu/~jepson/csc2503/tutorials/homography.pdf) - here, the first plane is the image plane, and the second is the rotated and twisted version of that. Zhang computes these homographies by splitting them up into the constituent components - a [projective transform](http://www.geom.uiuc.edu/docs/reference/CRC-formulas/node16.html), a similarity transform (rotation, translation, or scaling), and a [shearing transform](http://mathworld.wolfram.com/Shear.html). To compute the projective transform, Zhang defines the amount of projective distortion the image currently has (compared to what it needs to be transformed to; if you look at the images linked), and we attempt to minimise this. This minimisation then gives us parameters for the projective transformation. Zhang then shows that the similarity - the rotation, translation, and/or scaling - can be defined in terms of the fundamental matrix and the projective transform. Alright, we can compute that now. Finally, the shearing transform isn't necessary, but is nice to clear up some final distortion. This is computed by using the constraints that a shear must give us. To undistort, the shear must preserve the aspect ration, and also make corners perpendicular. This allows us to give us some simultaneous equations, and bam we get the three transforms. Chain these, and you have your homography. 
+
+I realise that the above paragraph may not be clear; the paper is difficult to get through. However, give it a read and see for yourself. At the very least, the math is detailed, so if my words don't make sense, compare the paper to the code, and you can see the equations there. 
+
+Once we've rectified the images, we can compute the depth by matching pixels in each line. For each pixel in one image, we scan along the same horizontal line in the second image, looking for the closest match. Then compute the depth using (Szeliski's depth formula), and we use this to colour a depth image. The depth image is presented as a grayscale image where the darkness or lightness corresponds to depth - darker points are further away, and lighter points are closer. 
+
+For the results, see the rectification section below. 
 
 # Results and Conclusion
+### Viewing the triangulated points
+Once we've triangulated every matching pair of points, we transform each of these into the frame of the first camera (or second; the point is we pick one and stick with it). This is our point cloud! A __point cloud__ is ... well ... it's a whole bunch of points. In 3D. Pretty simple. We can render this in something like [MeshLab](http://www.meshlab.net/), which takes .txt files of points in the format
+
+Px Py Pz
+
+and so on. When viewing this it can be a bit difficult to see that we have the right depths, but if you wiggle the point cloud around a bit with your mouse, then you can get an idea for the scene shape. 
+
+### Viewing the rectified points
+As explained above, the rectified depth image is a grayscale where darkness corresponds to depth. Since this dataset has ground truth images, we can compare our image to these to see how accurate this method was. I'm not bothered with this, since I'm trying to present just a method, not trying to get the most accurate method. But that's how I represent this data. 
+
+### Reading the code
+I've included what are hopefully explanatory comments where I consider necessary, and useful, and above every major function - and the major functions sort of follow the headings above, in main.cpp at least. If you scroll down through that, you'll see the Feature Extraction, the Matching, Triangulation, and then Rectification at least. Dive into those. I've tried to comment those well too, and each is located just below its helpers. 
+
+### Wrapping up
+Thanks for reading! I hope this was helpful and that you could learn from it, in whatever context - whether as just a quick reference, stealing some code, or fully following along. 
 
 
