@@ -190,7 +190,7 @@ I realise that the above paragraph may not be clear; the paper is difficult to g
 
 
 ### Depth from rectified
-Once we've rectified the images, we can compute the depth by matching pixels in each line. For each pixel in one image, we scan along the same horizontal line in the second image, looking for the closest match. Then compute the depth using (TODO: Szeliski's depth formula), and we use this to colour a depth image. The depth image is presented as a grayscale image where the darkness or lightness corresponds to depth - darker points are further away, and lighter points are closer. 
+Once we've rectified the images, we can compute the depth by matching pixels in each line. For each pixel in one image, we scan along the same horizontal line in the second image, looking for the closest match. The depth per pixel is proportional to the difference in x coordinate, and we use this to colour a depth image. The depth image is presented as a grayscale image where the darkness or lightness corresponds to depth - darker points are further away, and lighter points are closer. 
 
 For the results, see the rectification section below. 
 
