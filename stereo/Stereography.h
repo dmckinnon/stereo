@@ -34,4 +34,16 @@ void DecomposeProjectiveMatrixIntoKAndE(const Eigen::MatrixXf& P, Eigen::Matrix3
 
 bool DecomposeEssentialMatrix(Eigen::Matrix3f& E, Eigen::Matrix3f& R, Eigen::Vector3f& t);
 
+void ComputeRectificationRotations(
+	_In_ Eigen::Matrix3f& E,
+	_In_ const cv::Mat& img0,
+	_In_ const cv::Mat& img1,
+	_Out_ Eigen::Matrix3f& R0,
+	_Out_ Eigen::Matrix3f& R1);
+
+cv::Mat RectifyImage(
+	_In_ const cv::Mat& img,
+	_In_ const Eigen::Matrix3f& R,
+	_In_ const Eigen::Matrix3f& K);
+
 void ReadCalibrationMatricesFromFile(_In_ const std::string& calibFile, _Inout_ std::vector<ImageDescriptor>& images);

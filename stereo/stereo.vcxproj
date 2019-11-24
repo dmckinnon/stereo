@@ -137,6 +137,7 @@
     <ClCompile Include="Estimation.cpp" />
     <ClCompile Include="Features.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Math.cpp" />
     <ClCompile Include="Stereography.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -155,6 +156,7 @@
   <ItemGroup>
     <ClInclude Include="Estimation.h" />
     <ClInclude Include="Features.h" />
+    <ClInclude Include="Math.h" />
     <ClInclude Include="Stereography.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

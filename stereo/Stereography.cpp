@@ -1,4 +1,5 @@
 #include "Stereography.h"
+#include "Math.h"
 #include <stdlib.h>
 #include <iostream>
 #include <algorithm>
@@ -500,11 +501,98 @@ void DecomposeProjectiveMatrixIntoKAndE(const MatrixXf& P, Matrix3f& K, Matrix3f
 	Matrix3f R = (Qx * Qy * Qz).transpose();
 
 	// To get E, we do R * t_skew
-	Matrix3f t_skew;
-	t_skew << 0,   -t[2],  t[1],
-		     t[2],   0,   -t[0],
-		    -t[1],  t[0],   0;
+	Matrix3f t_skew = SkewSymmetric(t);
 	E = R * t_skew;
+}
+
+/*
+	Rectification
+	Given the Essential matrix and the two images for it, 
+	compute the necessary rotations that transform the images
+	into the rectified versions
+
+
+	Output: both homographies
+*/
+void ComputeRectificationRotations(
+	_In_ Matrix3f& E,
+	_In_ const Mat& img0,
+	_In_ const Mat& img1,
+	_Out_ Matrix3f& R0,
+	_Out_ Matrix3f& R1)
+{
+	// Get the extrinsics for the cameras
+	Vector3f t(0, 0, 0);
+	Matrix3f R;
+	R.setZero();
+	DecomposeEssentialMatrix(E, R, t);
+	// TODO: is E here the inverse of what we need?
+	// Do we need to invert R and t?
+
+	// First, compute the rotation R_half such that 
+	// R = R_half * R_half
+	// We perform this operation on the Special Orthogonal Lie Group:
+	// We get the logarithm of the rotation to put this in the 
+	// Lie algebra space, halve this vector, and then take the exponential
+	// to convert back to the group space
+	Vector3f rotation = SO3_log(R);
+	rotation /= 2;
+	Matrix3f R_half = SO3_exp(rotation);
+
+	// TODO: This might need to be reversed
+	R0 = R_half;
+	R1 = R_half.transpose();
+
+	// Now build the rotation that makes the baseline the x-axis
+	Vector3f rx = t / t.norm();
+	Vector3f ry = Vector3f(0, 0, 1).cross(rx);
+	ry /= ry.norm();
+	Vector3f rz = rx.cross(ry);
+	// make sure everything is normalised
+	rz /= rz.norm();
+	Matrix3f R_baseline;
+	R_baseline.row(0) = rx;
+	R_baseline.row(1) = ry;
+	R_baseline.row(2) = rz;
+
+	R0 = R_baseline * R0;
+	R1 = R_baseline * R1;
+}
+
+/*
+	Given a rectification rotation, a calibration matrix, 
+	and an image, compute the rectified image using projection.
+
+*/
+Mat RectifyImage(
+	_In_ const Mat& img,
+	_In_ const Matrix3f& R,
+	_In_ const Matrix3f& K)
+{
+	Mat rectified = img.clone();
+	// could clear this first to test?
+
+	// For each pixel in img, 
+	// unproject this using K inverse to a ray at z=1
+	// then apply the rotation
+	// then project back into image space and fill the new img
+	for (int y = 0; y < img.rows; ++y)
+	{
+		for (int x = 0; x < img.cols; ++x)
+		{
+			Vector3f p(x,y,1);
+			p = K.inverse() * p;
+			p /= p(2);
+			Vector3f p_rectified = R * p;
+
+			// Do we normalise again?
+
+			p_rectified = K * p_rectified;
+			rectified.at<uchar>(p_rectified(1), p_rectified(0)) = img.at<uchar>(y,x);
+		}
+	}
+
+	return rectified;
 }
 
 /*

@@ -42,7 +42,7 @@ using namespace Eigen;
 
 
 /*
-	This is an exercise in stereo depth-maps and reconstruction (stretch goal)
+	This is an exercise in stereo depth-maps
 	See README for more detail
 
 	The way this will work is for a given number of input images (start with two)
@@ -358,10 +358,20 @@ int main(int argc, char** argv)
 	// a depth map, or a point cloud to display, we don't necessarily care about that
 
 	// Compute rectification rotations
+	Matrix3f R0, R1;
+	ComputeRectificationRotations(stereo.E,
+		imread(stereo.img1.filename, 0),
+		imread(stereo.img2.filename, 0),
+		R0, R1);
 
 	// Apply to images
+	Mat rectified_img0 = RectifyImage(imread(stereo.img1.filename, 0),
+									  R0, stereo.img1.K);
+	Mat rectified_img1 = RectifyImage(imread(stereo.img2.filename, 0),
+									  R1, stereo.img2.K);
 	
 	// Compute depth map
+	// for each pixel in het left, search along the row in hetr and check
 
 	// Show depth map
 
