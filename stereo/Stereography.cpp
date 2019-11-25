@@ -560,39 +560,85 @@ void ComputeRectificationRotations(
 }
 
 /*
-	Given a rectification rotation, a calibration matrix, 
+	Given a homography from the original to the rectified image, 
 	and an image, compute the rectified image using projection.
 
 */
-Mat RectifyImage(
-	_In_ const Mat& img,
-	_In_ const Matrix3f& R,
-	_In_ const Matrix3f& K)
+// Helper
+uchar BilinearInterpolatePixel(const Mat& img, const float& x, const float& y)
 {
-	Mat rectified = img.clone();
-	// could clear this first to test?
+	// Bilinear interpolation
 
-	// For each pixel in img, 
-	// unproject this using K inverse to a ray at z=1
-	// then apply the rotation
-	// then project back into image space and fill the new img
-	for (int y = 0; y < img.rows; ++y)
+	// Given an imageand a floating point coordinate,
+	// interpolate the value of the pixel based on the surrounding
+	// four values
+	float x1 = floor(x);
+	float x2 = ceil(x);
+	float y1 = floor(y);
+	float y2 = ceil(y);
+
+	uchar y1Val = ((x2 - x) / (x2 - x1)) * img.at<uchar>(y1, x1) + ((x - x1) / (x2 - x1)) * img.at<uchar>(y1, x2);
+	uchar y2Val = ((x2 - x) / (x2 - x1)) * img.at<uchar>(y2, x1) + ((x - x1) / (x2 - x1)) * img.at<uchar>(y2, x2);
+
+	uchar val = ((y2 - y) / (y2 - y1)) * y1Val + ((y - y1) / (y2 - y1)) * y2Val;
+	return val;
+}
+// Actual rectification
+void RectifyImage(
+	_In_ const cv::Mat& original,
+	_Out_ cv::Mat& rectified,
+	_In_ const Eigen::Matrix3f& H)
+{
+	// For the second image, reproject every pixel in the first Mat back into image to be stitched in.
+	// If it isn't there, move on.
+	// If it is there, bilinearly interpolate the value of that sub-pixel location
+	// In the original Mat, if this clashes with a point in the original image,
+	// take the average and place that there
+	// TODO: multithread
+	// To multithread, just use openmp on the outer for loop or something
+	// and cap threads at a reasonable number
+	for (unsigned int y = 0; y < rectified.rows; ++y)
 	{
-		for (int x = 0; x < img.cols; ++x)
+		for (unsigned int x = 0; x < rectified.cols; ++x)
 		{
-			Vector3f p(x,y,1);
-			p = K.inverse() * p;
-			p /= p(2);
-			Vector3f p_rectified = R * p;
+			Vector3f pixel(x, y, 1);
+			Vector3f transformedPixel = H.inverse() * pixel;
+			transformedPixel /= transformedPixel(2);
 
-			// Do we normalise again?
-
-			p_rectified = K * p_rectified;
-			rectified.at<uchar>(p_rectified(1), p_rectified(0)) = img.at<uchar>(y,x);
+			uchar pixelVal = 0;
+			if (0 < transformedPixel(0) && transformedPixel(0) < original.cols - 1)
+			{
+				if (0 < transformedPixel(1) && transformedPixel(1) < original.rows - 1)
+				{
+					uchar pixelVal = BilinearInterpolatePixel(original, transformedPixel(0), transformedPixel(1));
+					rectified.at<uchar>(y, x) = pixelVal;
+				}
+			}
 		}
 	}
+}
 
-	return rectified;
+/*
+	Compute depth map, once the iamges are aligned vertically
+
+	Once rectified, depth is easily computed as
+	d = f*B/Z
+	where f is the focal length, which we get from the calibration matrix,
+	B is the baseline - that is, the distance between the cameras (the length of
+	the translation vector of the transform between cameras),
+	and Z is, well, the Z coordinate.
+	But we don't know the Z coordinate?
+	Well, we estimate that by searching for matching pixels along the line.
+
+	What I'm going to do is for each pixel in the first image, search along the 
+	same row in the second for the best-matching pixel. Take the inverse of the x-coordinate distance,
+	and assign this as the pixel value in the depth image for that same point as in the first image
+*/
+Mat ComputeDepthImage(
+	_In_ const Mat& img0,
+	_In_ const Mat& img1)
+{
+	return img0;
 }
 
 /*

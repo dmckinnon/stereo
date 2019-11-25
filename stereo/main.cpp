@@ -366,20 +366,17 @@ int main(int argc, char** argv)
 		R0, R1);
 
 	// Apply to images
-	Mat rectified_img0 = RectifyImage(imread(stereo.img1.filename, 0),
-									  R0, stereo.img1.K);
-	Mat rectified_img1 = RectifyImage(imread(stereo.img2.filename, 0),
-									  R1, stereo.img2.K);
+	Mat rectified_img1(stereo.img1.height, stereo.img1.width, CV_8U, 0);
+	RectifyImage(imread(stereo.img1.filename, 0),
+		                rectified_img1,
+		                stereo.img1.K * R0 * stereo.img1.K.inverse());
+	Mat rectified_img2(stereo.img2.height, stereo.img2.width, CV_8U, 0);
+	RectifyImage(imread(stereo.img2.filename, 0),
+		                rectified_img2,
+		                stereo.img2.K* R1 * stereo.img2.K.inverse());
 	
 	// Compute depth map
-	// Once rectified, depth is easily computed as
-	// d = f*B/Z
-	// where f is the focal length, which we get from the calibration matrix,
-	// B is the baseline - that is, the distance between the cameras (the length of
-	// the translation vector of the transform between cameras),
-	// and Z is, well, the Z coordinate. 
-	// But we don't know the Z coordinate? 
-	// Well, we estimate that by searching for matching pixels along the line.
+	Mat depth = ComputeDepthImage(rectified_img1, rectified_img2);
 
 	// Show depth map
 
