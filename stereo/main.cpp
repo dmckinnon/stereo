@@ -10,6 +10,7 @@
 #include <sstream>
 #include <vector>
 #include <math.h>
+#include "Math.h"
 #include <algorithm>
 #include "Features.h"
 #include <Eigen/Dense>
@@ -37,7 +38,7 @@ using namespace Eigen;
 #define ROTATION_STEP 0.2f
 #define TRANSLATION_STEP 0.1f
 
-#define TRIANGULATION_POINT_CLOUD
+//#define TRIANGULATION_POINT_CLOUD
 #define RECTIFICATION_DEPTH_MAP
 
 
@@ -120,6 +121,26 @@ void DebugEpipolarLines(
 // Main
 int main(int argc, char** argv)
 {
+	/*
+	// unit testing SO3
+	Matrix3f R;
+	R << 1, 0, 0,
+		0, 0, -1,
+		0, 1, 0;
+	cout << "R total:" << endl << R << endl;
+	Vector3f rotation = SO3_log(R);
+
+	cout << "log: " << endl << rotation << endl;
+	rotation /= 2;
+	Matrix3f R_half = SO3_exp(rotation);
+
+	cout << "R_half: " << endl << R_half << endl;
+	// This should return exactly the same thign
+
+	return 0;*/
+
+
+
 	// first arg is the folder containing all the images
 	if (argc < 2 || strcmp(argv[1], "-h") == 0)
 	{
@@ -280,13 +301,14 @@ int main(int argc, char** argv)
 	// Now do some cheeky feature matching again
 	// Some features won't match well, but that's ok
 	vector<std::pair<Feature, Feature>> newMatches;
-	newMatches = MatchDescriptors(images[0].features, images[1].features, MAX_DIST_BETWEEN_MATCHES*2);
+	newMatches = MatchDescriptors(images[0].features, images[1].features, MA X_DIST_BETWEEN_MATCHES*2);
 
 	// COmpute transform between images
 	Vector3f t(0, 0, 0);
-	Matrix3f R;
+	Matrix3f R, R_other;
 	R.setZero();
-	DecomposeEssentialMatrix(stereo.E, R, t);
+	R_other.setZero();
+	DecomposeEssentialMatrix(stereo.E, R_other, R, t);
 	
 	// Now for each match, get the depth in the frame of the first image
 	vector<Vector3f> depthPoints;
@@ -365,15 +387,32 @@ int main(int argc, char** argv)
 		imread(stereo.img2.filename, 0),
 		R0, R1);
 
+	cout << "Rotation for image 0: " << endl << R0 << endl;
+	cout << "Rotation for image 1: " << endl << R1 << endl;
+	// the rotations have y and z flipped
+	// Also z is negative
+	// why is this giving a weird rotation? Like it's correct but it also isn't?
+	// R_half is flipping the axes and I'm not sure why cos the inter-camera rotation
+	// should be tiny
+
 	// Apply to images
-	Mat rectified_img1(stereo.img1.height, stereo.img1.width, CV_8U, 0);
+	Mat rectified_img1 = Mat::zeros(Size(stereo.img1.width, stereo.img1.height), CV_8U);
 	RectifyImage(imread(stereo.img1.filename, 0),
 		                rectified_img1,
 		                stereo.img1.K * R0 * stereo.img1.K.inverse());
-	Mat rectified_img2(stereo.img2.height, stereo.img2.width, CV_8U, 0);
+	Mat rectified_img2 = Mat::zeros(Size(stereo.img2.width, stereo.img2.height), CV_8U);
 	RectifyImage(imread(stereo.img2.filename, 0),
 		                rectified_img2,
 		                stereo.img2.K* R1 * stereo.img2.K.inverse());
+
+	// Need to give images that accomodate the homography
+	// and then also need to vertically align the images
+
+	// DEBUG
+	// Show rectified images
+	imshow("rectified 0", rectified_img1);
+	imshow("rectified 1", rectified_img2);
+	waitKey(0);
 	
 	// Compute depth map
 	Mat depth = ComputeDepthImage(rectified_img1, rectified_img2);
@@ -435,9 +474,10 @@ void DebugEpipolarLines(
 	// We do this by drawing the epipolar line from the essential matrix at various depths,
 	// and drawing the matching feature
 	Vector3f t(0, 0, 0);
-	Matrix3f R;
+	Matrix3f R, R2;
 	R.setZero();
-	DecomposeEssentialMatrix(stereo.E, R, t);
+	R2.setZero();
+	DecomposeEssentialMatrix(stereo.E, R2, R, t);
 
 	// verify with the difference between t_skew * R and E
 	std::cout << "Difference between E and t_skew * R:" << endl;
@@ -489,7 +529,6 @@ void DebugEpipolarLines(
 			projectivePoint = images[1].K * transformedPoint;
 			// get u, v from first to bits
 			Point2f reprojection(projectivePoint[0], projectivePoint[1]);
-			//reprojection /= 4;
 			reprojection.x += offset;
 			circle(epipolarLines, reprojection, 2, (255, 255, 0), -1);
 			//cout << "Epipolar line point at depth " << d << " is " << reprojection << endl;

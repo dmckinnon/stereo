@@ -218,10 +218,11 @@ bool FindFundamentalMatrixWithRANSAC(const vector<pair<Feature, Feature>>& match
 			float avgError = 0;
 
 			Matrix3f E = stereo.img2.K.transpose() * fundamental * stereo.img1.K;
-			Matrix3f R;
+			Matrix3f R, R2;
 			R.setZero();
+			R2.setZero();
 			Vector3f t(0, 0, 0);
-			DecomposeEssentialMatrix(E, R, t);
+			DecomposeEssentialMatrix(E, R2, R, t);
 			for (auto& m : pairs)
 			{
 				auto f = Vector3f(m.first.p.x, m.first.p.y, 1);
@@ -237,7 +238,7 @@ bool FindFundamentalMatrixWithRANSAC(const vector<pair<Feature, Feature>>& match
 			}
 			if (localInliers > 0)
 				avgError /= localInliers;
-			cout << avgError << endl;
+			//cout << avgError << endl;
 			if (localInliers > MIN_NUM_INLIERS && avgError < minError)
 			{
 				minError = avgError;
@@ -297,7 +298,11 @@ bool FindFundamentalMatrixWithRANSAC(const vector<pair<Feature, Feature>>& match
 
 */
 // Helpers
-bool DecomposeEssentialMatrix(Matrix3f& E, Matrix3f& R, Vector3f& t)
+bool DecomposeEssentialMatrix(
+	_In_ Eigen::Matrix3f& E,
+	_Out_ Eigen::Matrix3f& R1,
+	_Out_ Eigen::Matrix3f& R2,
+	_Out_ Eigen::Vector3f& t)
 {
 	BDCSVD<MatrixXf> svd_initial(E, ComputeFullU | ComputeFullV);
 	if (!svd_initial.computeV())
@@ -332,9 +337,9 @@ bool DecomposeEssentialMatrix(Matrix3f& E, Matrix3f& R, Vector3f& t)
 		 1,  0, 0,
 		 0,  0, 1;
 
-	R = u * W * V.transpose();
+	R1 = u * W * V.transpose();
 	// Or R could also be
-	R = U * W.transpose() * V.transpose();
+	R2 = U * W.transpose() * V.transpose();
 	// this second one is right somehow ... Basically the way to check is on the 3D points
 	t(0) = U(0,2);
 	t(1) = U(1, 2);
@@ -388,9 +393,10 @@ bool Triangulate(float& depth0, float& depth1, Vector3f& x, Vector3f& xprime, Ma
 	// Basically the most agreeable point. The depth along each ray, then, is the point depth. 
 
 	Vector3f t(0, 0, 0);
-	Matrix3f R;
+	Matrix3f R, R_other;
 	R.setZero();
-	if (!DecomposeEssentialMatrix(E, R, t))
+	R_other.setZero();
+	if (!DecomposeEssentialMatrix(E, R_other, R, t))
 	{
 		return false;
 	}
@@ -518,16 +524,28 @@ void ComputeRectificationRotations(
 	_In_ Matrix3f& E,
 	_In_ const Mat& img0,
 	_In_ const Mat& img1,
-	_Out_ Matrix3f& R0,
-	_Out_ Matrix3f& R1)
+	_Out_ Matrix3f& R_0,
+	_Out_ Matrix3f& R_1)
 {
 	// Get the extrinsics for the cameras
+	// Here's the important thing:
+	// Decomposition produces two rotations, and the only way to know 
+	// which is correct is to try both and see.
+	// The best solution is to calibrate your camera extrinsics beforehand
+	// and/or have some physical prior you can use to get the correct rotation
+	// In this situation I know that both cameras face the same way, and that 
+	// one rotation is almost 180 degrees in Y, which would face the cameras 
+	// the opposite way.
 	Vector3f t(0, 0, 0);
-	Matrix3f R;
-	R.setZero();
-	DecomposeEssentialMatrix(E, R, t);
-	// TODO: is E here the inverse of what we need?
-	// Do we need to invert R and t?
+	Matrix3f R1, R2;
+	R1.setZero();
+	R2.setZero();
+	DecomposeEssentialMatrix(E, R1, R2, t);
+
+	// We need to invert R and t since E goes the wrong way
+	Matrix3f R_temp = R1.inverse();
+	R1 = R_temp;
+	Vector3f t2 = - R1 * t;
 
 	// First, compute the rotation R_half such that 
 	// R = R_half * R_half
@@ -535,28 +553,40 @@ void ComputeRectificationRotations(
 	// We get the logarithm of the rotation to put this in the 
 	// Lie algebra space, halve this vector, and then take the exponential
 	// to convert back to the group space
-	Vector3f rotation = SO3_log(R);
+	cout << "R total:" << endl << R1 << endl;
+	Vector3f rotation = SO3_log(R1);
+	cout << "log:" << endl << rotation << endl;
 	rotation /= 2;
 	Matrix3f R_half = SO3_exp(rotation);
 
+	cout << "R_half: " << endl << R_half << endl;
+
 	// TODO: This might need to be reversed
-	R0 = R_half;
-	R1 = R_half.transpose();
+	R_0 = R_half;// .transpose();
+	R_1 = R_half.transpose();
+
+	// Z axis and Y axis are flipped???
 
 	// Now build the rotation that makes the baseline the x-axis
 	Vector3f rx = t / t.norm();
+	cout << "rx " << endl << rx << endl;
 	Vector3f ry = Vector3f(0, 0, 1).cross(rx);
 	ry /= ry.norm();
+	cout << "ry " << endl << ry << endl;
 	Vector3f rz = rx.cross(ry);
 	// make sure everything is normalised
 	rz /= rz.norm();
+	cout << "rz " << endl << rz << endl;
 	Matrix3f R_baseline;
 	R_baseline.row(0) = rx;
-	R_baseline.row(1) = ry;
-	R_baseline.row(2) = rz;
+	R_baseline.row(1) = -rz;// ry;
+	R_baseline.row(2) = ry;// rz;
+	R_baseline << rx(0), rx(1), rx(2),
+		          ry(0), ry(1), ry(2),
+		          rz(0), rz(1), rz(2);
 
-	R0 = R_baseline * R0;
-	R1 = R_baseline * R1;
+	R_0 = R_baseline * R_0;
+	R_1 = R_baseline * R_1;
 }
 
 /*

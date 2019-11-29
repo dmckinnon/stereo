@@ -32,14 +32,18 @@ bool Triangulate(float& depth0, float& depth1, Eigen::Vector3f& x, Eigen::Vector
 
 void DecomposeProjectiveMatrixIntoKAndE(const Eigen::MatrixXf& P, Eigen::Matrix3f& K, Eigen::Matrix3f& E);
 
-bool DecomposeEssentialMatrix(Eigen::Matrix3f& E, Eigen::Matrix3f& R, Eigen::Vector3f& t);
+bool DecomposeEssentialMatrix(
+	_In_ Eigen::Matrix3f& E,
+	_Out_ Eigen::Matrix3f& R1,
+	_Out_ Eigen::Matrix3f& R2,
+	_Out_ Eigen::Vector3f& t);
 
 void ComputeRectificationRotations(
 	_In_ Eigen::Matrix3f& E,
 	_In_ const cv::Mat& img0,
 	_In_ const cv::Mat& img1,
-	_Out_ Eigen::Matrix3f& R0,
-	_Out_ Eigen::Matrix3f& R1);
+	_Out_ Eigen::Matrix3f& R_0,
+	_Out_ Eigen::Matrix3f& R_1);
 
 void RectifyImage(
 	_In_ const cv::Mat& original,
