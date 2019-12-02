@@ -19,8 +19,6 @@
 #include "Stereography.h"
 #include "Estimation.h"
 #include <stdlib.h>
-//#include <GL/glew.h> // This must appear before freeglut.h
-//#include <GL/freeglut.h>
 #include <omp.h>
 
 using namespace std;
@@ -34,6 +32,7 @@ using namespace Eigen;
 //#define DEBUG_MATCHES
 //#define DEBUG_FUNDAMENTAL
 //#define DEBUG_ESSENTIAL_MATRIX
+#define DEBUG_RECTIFICATION
 
 #define ROTATION_STEP 0.2f
 #define TRANSLATION_STEP 0.1f
@@ -75,12 +74,7 @@ using namespace Eigen;
 		This will be computed using Peter Lindstrom's algorithm
 
 	Rectification
-		
-
-	TODO:
-	- rectification
-	- write up Lindstrom
-	- lovely comments
+		This is computed using the extrinsics of the cameras
 
 */
 
@@ -121,26 +115,6 @@ void DebugEpipolarLines(
 // Main
 int main(int argc, char** argv)
 {
-	/*
-	// unit testing SO3
-	Matrix3f R;
-	R << 1, 0, 0,
-		0, 0, -1,
-		0, 1, 0;
-	cout << "R total:" << endl << R << endl;
-	Vector3f rotation = SO3_log(R);
-
-	cout << "log: " << endl << rotation << endl;
-	rotation /= 2;
-	Matrix3f R_half = SO3_exp(rotation);
-
-	cout << "R_half: " << endl << R_half << endl;
-	// This should return exactly the same thign
-
-	return 0;*/
-
-
-
 	// first arg is the folder containing all the images
 	if (argc < 2 || strcmp(argv[1], "-h") == 0)
 	{
@@ -320,8 +294,6 @@ int main(int argc, char** argv)
 		Vector3f pointXPrime = stereo.img1.K.inverse() * Vector3f(xprime.x, xprime.y, 1);
 		float d0 = 0;
 		float d1 = 0;
-		// TODO - do I need to do this the other way?
-		// TODO - normalise or no? No?
 		Matrix3f Einverse = stereo.E.inverse();
 		if (!Triangulate(d0, d1, pointX, pointXPrime, stereo.E))
 		{
@@ -330,9 +302,6 @@ int main(int argc, char** argv)
 			continue;
 		}
 
-		// Is this depth in first frame or second frame?
-		// There is also a bug where depth is negative sometimes.
-		// This can happen from triangulation
 		d0 = abs(d0);
 		d1 = abs(d1);
 		match.first.depth = abs(d0);
@@ -387,15 +356,9 @@ int main(int argc, char** argv)
 		imread(stereo.img2.filename, 0),
 		R0, R1);
 
-	cout << "Rotation for image 0: " << endl << R0 << endl;
-	cout << "Rotation for image 1: " << endl << R1 << endl;
-	// the rotations have y and z flipped
-	// Also z is negative
-	// why is this giving a weird rotation? Like it's correct but it also isn't?
-	// R_half is flipping the axes and I'm not sure why cos the inter-camera rotation
-	// should be tiny
-
-	// Apply to images
+	// Apply rotation to images
+	// Sometimes the rectified images don't fit nicely within the original image
+	// frames given. Here I don't tackle that, but it can be necessary
 	Mat rectified_img1 = Mat::zeros(Size(stereo.img1.width, stereo.img1.height), CV_8U);
 	RectifyImage(imread(stereo.img1.filename, 0),
 		                rectified_img1,
@@ -405,21 +368,20 @@ int main(int argc, char** argv)
 		                rectified_img2,
 		                stereo.img2.K* R1 * stereo.img2.K.inverse());
 
-	// Need to give images that accomodate the homography
-	// and then also need to vertically align the images
-
-	// DEBUG
+#ifdef DEBUG_RECTIFICATION
 	// Show rectified images
 	imshow("rectified 0", rectified_img1);
 	imshow("rectified 1", rectified_img2);
 	waitKey(0);
+#endif
 	
 	// Compute depth map
+	// This doesn't work
 	Mat depth = ComputeDepthImage(rectified_img1, rectified_img2);
 
 	// Show depth map
-
-	// save depth map?
+	imshow("depth", depth);
+	waitKey(0);
 #endif
 
 	return 0;

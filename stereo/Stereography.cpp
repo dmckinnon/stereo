@@ -238,7 +238,7 @@ bool FindFundamentalMatrixWithRANSAC(const vector<pair<Feature, Feature>>& match
 			}
 			if (localInliers > 0)
 				avgError /= localInliers;
-			//cout << avgError << endl;
+
 			if (localInliers > MIN_NUM_INLIERS && avgError < minError)
 			{
 				minError = avgError;
@@ -346,7 +346,6 @@ bool DecomposeEssentialMatrix(
 	t(2) = U(2, 2);
 
 	// we either need t or -t
-
 	// t can also be t = UWDU.transpose()
 	// or t = UZU.transpose, z = -W without the 1 in the borrom right
 
@@ -417,15 +416,10 @@ bool Triangulate(float& depth0, float& depth1, Vector3f& x, Vector3f& xprime, Ma
 
 	float g = c * c - b * e;
 	if (fabs(g) < 1e-9) return false;
-	//{
-		// do this the other way
-		// turns out this doesn't work. 
-		// This gets degenerate solutions when the epipolar lines are parallel
-		// Need to compute an example with some rotation 
-	//}
+
 	float d0 = 0;
 	float d1 = 0;
-	if (fabs(c) < 1e-9)// return false;
+	if (fabs(c) < 1e-9)
 	{
 		d1 = (a * c - b * d) / (c * c - b * e);
 		d0 = (c * d1 - a) / b;
@@ -461,10 +455,6 @@ bool Triangulate(float& depth0, float& depth1, Vector3f& x, Vector3f& xprime, Ma
 	by virtue of being a rotation matrix. Conveniently, RQ decomposition decomposes a matrix A into 
 	two components, one being upper-triangular - R - and the other being orthogonal. While every rotation
 	is orthogonal, it's also true that every orthogonal matrix is a rotation. 
-
-	Questions:
-	- is this how the translation is computed? What if it is just the final column?
-	- Do we need to scale K? Divide by final element?
 */
 void DecomposeProjectiveMatrixIntoKAndE(const MatrixXf& P, Matrix3f& K, Matrix3f& E)
 {
@@ -517,7 +507,6 @@ void DecomposeProjectiveMatrixIntoKAndE(const MatrixXf& P, Matrix3f& K, Matrix3f
 	compute the necessary rotations that transform the images
 	into the rectified versions
 
-
 	Output: both homographies
 */
 void ComputeRectificationRotations(
@@ -553,34 +542,25 @@ void ComputeRectificationRotations(
 	// We get the logarithm of the rotation to put this in the 
 	// Lie algebra space, halve this vector, and then take the exponential
 	// to convert back to the group space
-	cout << "R total:" << endl << R1 << endl;
 	Vector3f rotation = SO3_log(R1);
-	cout << "log:" << endl << rotation << endl;
 	rotation /= 2;
 	Matrix3f R_half = SO3_exp(rotation);
 
-	cout << "R_half: " << endl << R_half << endl;
-
-	// TODO: This might need to be reversed
-	R_0 = R_half;// .transpose();
-	R_1 = R_half.transpose();
-
-	// Z axis and Y axis are flipped???
+	R_0 = R_half.transpose();
+	R_1 = R_half;// .transpose();
 
 	// Now build the rotation that makes the baseline the x-axis
 	Vector3f rx = t / t.norm();
-	cout << "rx " << endl << rx << endl;
 	Vector3f ry = Vector3f(0, 0, 1).cross(rx);
 	ry /= ry.norm();
-	cout << "ry " << endl << ry << endl;
 	Vector3f rz = rx.cross(ry);
 	// make sure everything is normalised
 	rz /= rz.norm();
-	cout << "rz " << endl << rz << endl;
+
 	Matrix3f R_baseline;
 	R_baseline.row(0) = rx;
-	R_baseline.row(1) = -rz;// ry;
-	R_baseline.row(2) = ry;// rz;
+	R_baseline.row(1) = ry;
+	R_baseline.row(2) = rz;
 	R_baseline << rx(0), rx(1), rx(2),
 		          ry(0), ry(1), ry(2),
 		          rz(0), rz(1), rz(2);
@@ -592,7 +572,6 @@ void ComputeRectificationRotations(
 /*
 	Given a homography from the original to the rectified image, 
 	and an image, compute the rectified image using projection.
-
 */
 // Helper
 uchar BilinearInterpolatePixel(const Mat& img, const float& x, const float& y)
@@ -624,9 +603,12 @@ void RectifyImage(
 	// If it is there, bilinearly interpolate the value of that sub-pixel location
 	// In the original Mat, if this clashes with a point in the original image,
 	// take the average and place that there
+
 	// TODO: multithread
 	// To multithread, just use openmp on the outer for loop or something
 	// and cap threads at a reasonable number
+
+	// Iterate over the size of the original image
 	for (unsigned int y = 0; y < rectified.rows; ++y)
 	{
 		for (unsigned int x = 0; x < rectified.cols; ++x)
@@ -668,7 +650,44 @@ Mat ComputeDepthImage(
 	_In_ const Mat& img0,
 	_In_ const Mat& img1)
 {
-	return img0;
+	// This assumes vertical alignment
+	// and the same image size
+	if (img0.cols != img1.cols || img0.rows != img1.rows)
+	{
+		cout << "Cannot compute depth!" << endl;
+		return Mat(Size(0,0), CV_8U);
+	}
+
+	// Depth Image
+	Mat depth = Mat::zeros(Size(img0.cols, img0.rows), CV_8U);
+
+	for (int y = 0; y < img0.rows; ++y)
+	{
+		for (int x = 0; x < img0.cols; ++x)
+		{
+			// For each pixel, find the best-matching pixel in the same row in the other image
+			uchar pixel0 = img0.at<uchar>(y,x);
+			if (pixel0 == 0) continue;
+			int xBestMatch = 0;
+			int distance = 255; // biggest distance any two pixel values can be
+			for (int x1 = 0; x1 < img1.cols; ++x1)
+			{
+				uchar pixel1 = img1.at<uchar>(y,x1);
+				if (pixel1 == 0) continue;
+				if (abs(pixel1 - pixel0) < distance)
+				{
+					distance = abs(pixel1 - pixel0);
+					xBestMatch = x1;
+				}
+			}
+
+			// Now that we have the best match
+			// For now, directly set depth to x distance
+			depth.at<uchar>(y,x) = abs(xBestMatch -x);
+		}
+	}
+
+	return depth;
 }
 
 /*
