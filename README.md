@@ -129,6 +129,9 @@ This algorithm works in a very similar way to how we [find a homography between 
 
 Well, if we have corresponding points *x* and *x'* and fundamental matrix *F* then these relate by *x**F**x'* = __0__. Using this constraint we can form a system of linear equations for each element of *F*. Then we use our old friend, SVD to compute a result for *F*. Note that the points *x* and *x'* should be normalised to have zero mean and standard deviation of 1 to remove the possibility of numerical error. This can come from some points having values of 1000, or so, and others 0.1. An error of a half affects one point significantly more than the other, but shouldn't. 
 
+### One important note
+Now there's something worth noting here. In the triangulation and rectification situations, we want to apply the transform - the rotation and/or translation - between the cameras to some points to put them in the right reference frame. The Essential Matrix encodes these two things - that is, __E__ = [__R__ __t__], where __R__ is a rotation and __t__ is a translation. I implement a function to decompose __E__ into these, BUT there is an important gotcha. There are two possibilities for the rotation that comes out of this, as described in the code, and the translation can be __t__ or -__t__. How do you know? Basically, you gotta try both and see. UNLESS you have some prior physical information, eg. I know that in this case the cameras face the same way, and have a very small rotational angle between them. The two rotations I got were one that had a small angle, and one that was approximately 180 degrees in *y*. So I can hardcode in that prior to determine which I want: if *y* angle is too big, discard this rotation.
+
 
 # Triangulation
 Once we have the Fundamental Matrix or Essential Matrix we can triangulate the points. So triangulation is basically the idea that we know where the same point is in each image, but not where it is in 3D space. But we can get the depthless ray for the point in each image space, and presumably, where those rays cross or somewhere near, is where the point is, and we can measure the depth along the ray and bam. 
@@ -181,7 +184,23 @@ Secondly, we now need to reorient the cameras such that the baseline - the trans
 As it turns out, it is mathematically easier to compute the inverse of this rotation - the matrix that rotates from the ideal stereo world to the world that we currently have. But that's ok, because inverting 3x3 rotation matrices is easy - you just take the transpose (flip them around the diagonal). Call this rotation *R2*. So how do we compute the inverse? Well, the inverse should take what we want to be our *x*-axis and turn it into the translation vector between the cameras that we currently have, so *R2*(1,0,0) = *t* = 1/2*R* *t_ext*, where *t_ext* is the original translation between cameras. Therefore in the matrix *R2*, the first column - call it *rx* - must be *t* (normalised, since a rotation matrix has an [orthonormal basis](https://en.wikipedia.org/wiki/Orthonormal_basis)). The rest of the matrix falls into place as follows: this rotation has to rotate coordinates in *y* to coordinates perpendicular to both this new *x* axis, and to *z*, so call *ry* = (0,0,1) cross *rx*. Then *rz* = *rx* cross *ry*. 
 Then invert this matrix by taking the transpose. 
 
-Finally, compose these two for a final rotation to apply to each image. Apply these rotations in the projective domain - that is, project each pixel out to a ray using the inverse of the calibration matrix and normalise to the z=1 plane (divide throughout by the z coordinate). Then apply the rotation to each projective pixel. Then project the points back into the image - you might need new image dimensions as the image will have warped. 
+Finally, compose these two for a final rotation to apply to each image. Apply these rotations in the projective domain - that is, project each pixel out to a ray using the inverse of the calibration matrix and normalise to the z=1 plane (divide throughout by the z coordinate). Then apply the rotation to each projective pixel. Then project the points back into the image - you might need new image dimensions as the image will have warped. The final equation you have is
+
+(u,v,1)\__rectified_ = K * *R2* * 1/2*R* * K_inverse * (u,v,1)\__original  
+
+Where the u's and v's are pixel coordinates. But this ends up being just a homography, since it is a transform between planes (the plane of the original image, and the plane of the rectified image). This is useful, since [I've done this before](https://github.com/dmckinnon/stitch#composition) which means I can copy paste code, and that's nice, but also there's a gotcha to watch out for. If we let *H* = K * *R2* * 1/2*R* * K_inverse to get a homography from original to rectified, then it will map the integer-valued pixel coordinates to float-valued coordinates (eg. u=33.87, v=89.5234). And these aren't valid points in the image array that we want. So what do we do?
+
+Well, we create the inverse homography going the other way, from rectified to original: H_inverse = K * 2 * *R*T * *R2*T * K_inverse, where *R*T is the transpose of the rotation (which is the inverse). Why would we do this? The reason is that we can now write an algorithm that goes:
+
+for every pixel in the rectified image:
+   transform these coordinates to original image coordinates
+   these will be floats, but that's ok
+   use [Bilinear Interpolation](https://en.wikipedia.org/wiki/Bilinear_interpolation) to figure out the value for this pixel that we want
+   assign the pixel in the rectified image this value
+   
+   
+Then we have our rectified image!
+
 
 ### Zhang's method - no camera calibration, just fundamental matrix
 According to Zhang, we need a [homography](https://en.wikipedia.org/wiki/Homography_(computer_vision)) for each image. In layman's terms, a homography is simply a [transformation between two planes in 3D space](http://www.cs.toronto.edu/~jepson/csc2503/tutorials/homography.pdf) - here, the first plane is the image plane, and the second is the rotated and twisted version of that. Zhang computes these homographies by splitting them up into the constituent components - a [projective transform](http://www.geom.uiuc.edu/docs/reference/CRC-formulas/node16.html), a similarity transform (rotation, translation, or scaling), and a [shearing transform](http://mathworld.wolfram.com/Shear.html). To compute the projective transform, Zhang defines the amount of projective distortion the image currently has (compared to what it needs to be transformed to; if you look at the images linked), and we attempt to minimise this. This minimisation then gives us parameters for the projective transformation. Zhang then shows that the similarity - the rotation, translation, and/or scaling - can be defined in terms of the fundamental matrix and the projective transform. Alright, we can compute that now. Finally, the shearing transform isn't necessary, but is nice to clear up some final distortion. This is computed by using the constraints that a shear must give us. To undistort, the shear must preserve the aspect ration, and also make corners perpendicular. This allows us to give us some simultaneous equations, and bam we get the three transforms. Chain these, and you have your homography. 
@@ -190,7 +209,7 @@ I realise that the above paragraph may not be clear; the paper is difficult to g
 
 
 ### Depth from rectified
-Once we've rectified the images, we can compute the depth by matching pixels in each line. For each pixel in one image, we scan along the same horizontal line in the second image, looking for the closest match. Then compute the depth using (TODO: Szeliski's depth formula), and we use this to colour a depth image. The depth image is presented as a grayscale image where the darkness or lightness corresponds to depth - darker points are further away, and lighter points are closer. 
+Once we've rectified the images, we can compute the depth by matching pixels in each line. For each pixel in one image, we scan along the same horizontal line in the second image, looking for the closest match. The depth per pixel is proportional to the difference in x coordinate, and we use this to colour a depth image. The depth image is presented as a grayscale image where the darkness or lightness corresponds to depth - darker points are further away, and lighter points are closer. 
 
 For the results, see the rectification section below. 
 
